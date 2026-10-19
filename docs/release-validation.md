@@ -1,4 +1,4 @@
-﻿# 1.0.0 交付验证
+﻿# 1.0.1 交付验证
 
 日期：2026-10-19。已验收 demo 基线：Git 提交 `769dc9b`，标签 `demo-accepted`。
 
@@ -6,11 +6,21 @@
 
 - SDK：本机已有 .NET SDK 10.0.401；目标 `net10.0-windows`，WinForms。
 - Release 诊断构建：0 警告、0 错误。
-- 已通过 43 项真实 NTFS / 配置 / 后台调度自动检查。完整报告保留于 `.demo-checks/latest-results.txt`。
+- 已通过 55 项真实 NTFS / 配置 / 后台调度自动检查。完整报告保留于 `.demo-checks/latest-results.txt`。
 - 测试均使用本项目内新建的独立目录，没有使用用户真实备份数据。
-- 2000 个新文件完整扫描最后一轮用时约 5.69 秒；该数字只是当前机器测试结果，不是性能保证。
+- 2000 个新文件完整扫描最后一轮用时约 4.55 秒；该数字只是当前机器测试结果，不是性能保证。
 - 2000 文件场景中的单文件变化扫描只检查 1 项，不遍历整个任务。
 - 主界面、任务编辑、程序设置均渲染成功；已检查主界面与设置截图。预览位置 `.demo-checks/preview`。
+
+## 1.0.1 修复验证
+
+- 通过 Marshal.GetExceptionForHR 真实重现 CLR 对 0x80070002 的 FileNotFoundException 映射；任务查询现在将该错误作为“尚未注册”，不阻断后续注册流程。
+- 同时覆盖 COMException 形式、已有任务返回和权限不足不能误判为任务不存在。
+- 可写性检测验证临时探针自动删除；通过注入回调验证同意/拒绝提权、取消 UAC、管理员仍不可写及非权限错误，测试没有触发真实 UAC 或修改 Program Files。
+- 应用 UI 固定简体中文；发布使用 SatelliteResourceLanguages 筛选资源，逐项检查输出卫星资源没有非中文文化目录。
+- 自启错误现在显示连接服务、打开根目录、查询任务、移除任务或注册任务的具体阶段。当前截图与查询缺陷一致；没有访问用户现有计划任务来确认现场状态。
+
+官方异常映射依据：[HRESULT 与 .NET 异常映射](https://learn.microsoft.com/en-us/dotnet/standard/native-interop/how-to-map-hresults-and-exceptions)。
 
 ## 自动验证范围
 

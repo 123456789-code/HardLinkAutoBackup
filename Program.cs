@@ -1,4 +1,5 @@
 ﻿using System.Diagnostics;
+using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Security.Principal;
 
@@ -24,6 +25,8 @@ internal static class Program {
 
 	[STAThread]
 	private static int Main(string[] args) {
+		CultureInfo.DefaultThreadCurrentUICulture = CultureInfo.GetCultureInfo("zh-CN");
+		Thread.CurrentThread.CurrentUICulture = CultureInfo.GetCultureInfo("zh-CN");
 		ApplicationConfiguration.Initialize();
 		if (args.Length == 1 && args[0] == "--version")
 			return 0;
@@ -56,6 +59,23 @@ internal static class Program {
 				PostMessageW(new IntPtr(0xffff), (uint)ActivateMessage, IntPtr.Zero, IntPtr.Zero);
 				return 0;
 			}
+			int storage_flag = Array.IndexOf(args, "--storage-elevated");
+			if (storage_flag >= 0 && (storage_flag + 1 >= args.Length || args[storage_flag + 1] != user_id))
+				throw new IOException("请使用同一 Windows 用户授予管理员权限；不支持切换到另一个管理员账户。");
+			bool writable = StartupAccess.EnsureDataAccess(store.EnsureWritable, StartupRegistration.IsAdministrator(),
+				() => MessageBox.Show($"程序需要在以下位置保存配置和日志，但当前没有写入权限：\r\n{store.DataDirectory}\r\n\r\nProgram Files 等受保护目录通常需要管理员权限。\r\n\r\n是否以管理员身份重新启动？同意后会开启“管理员权限启动”设置，不会自动开启登录自启。\r\n选择“否”将退出；也可把整个程序文件夹移到自己的可写目录后运行。",
+					"需要管理员权限", MessageBoxButtons.YesNo, MessageBoxIcon.Information) == DialogResult.Yes,
+				() => {
+					var elevated = new ProcessStartInfo(Environment.ProcessPath!) { UseShellExecute = true, Verb = "runas" };
+					foreach (string argument in args)
+						elevated.ArgumentList.Add(argument);
+					elevated.ArgumentList.Add("--storage-elevated");
+					elevated.ArgumentList.Add(user_id);
+					using Process child = Process.Start(elevated) ?? throw new IOException("无法重新启动程序。");
+				},
+				message => MessageBox.Show(message + $"\r\n\r\n数据目录：{store.DataDirectory}", "无法写入程序数据", MessageBoxButtons.OK, MessageBoxIcon.Information));
+			if (!writable)
+				return 0;
 			AppSettings settings;
 			try { settings = store.Load(); }
 			catch (Exception exception) {
@@ -64,6 +84,12 @@ internal static class Program {
 						MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes)
 					throw;
 				settings = store.RestoreBackup();
+			}
+			if (storage_flag >= 0 && StartupRegistration.IsAdministrator() && !settings.RunAsAdministrator) {
+				settings.RunAsAdministrator = true;
+				store.Save(settings);
+				if (settings.StartAtLogon)
+					MessageBox.Show("管理员启动设置已开启。请在“程序设置”中勾选“同步 / 修复自启任务”并保存，以更新已有登录任务的运行权限。", "请同步已有自启任务");
 			}
 			if (settings.RunAsAdministrator && !StartupRegistration.IsAdministrator()) {
 				var elevated = new ProcessStartInfo(Environment.ProcessPath!) { UseShellExecute = true, Verb = "runas" };

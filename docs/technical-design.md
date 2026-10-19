@@ -1,6 +1,6 @@
 ﻿# 技术设计
 
-状态：1.0.0 交付实现（2026-10-19）。运行说明见 user-guide.md，验证记录见 release-validation.md。
+状态：1.0.1 交付实现（2026-10-19）。运行说明见 user-guide.md，验证记录见 release-validation.md。
 
 ## 1. 已确认技术栈
 
@@ -118,7 +118,15 @@ UI 不直接执行硬链接操作；扫描器也不直接操作窗体控件。�
 - `Publish-Release.ps1` 创建独立的新发布目录，包含运行时、手册、变更记录、SHA256 清单及 ZIP，不覆盖现有发布目录。
 - 扫描前后路径检查无法消除恶意并发替换路径的所有竞态；本工具面向用户自己控制的普通数据目录，不应当用管理员权限监控不可信用户可任意修改的目录。
 
-## 10. 官方依据
+## 10. 1.0.1 权限和本地化修正
+
+首次读取配置前在 data 目录进行自动删除的写入探针。访问被拒绝时通过 StartupAccess 显示权限原因并由用户确认管理员重启；成功后保存管理员启动偏好，已有自启任务需在 UI 显式同步。普通可写目录不触发提权，管理员仍被拒绝时不循环启动，不改 ACL 或迁移用户配置。
+
+GetTask 查询只对 HRESULT 0x80070002 返回“任务不存在”，兼容 CLR 映射后的 FileNotFoundException；注册和其他阶段的同码错误仍报告失败。阶段包装异常保留 HRESULT，使访问拒绝能够继续请求提权。
+
+界面 CurrentUICulture / DefaultThreadCurrentUICulture 为 zh-CN；发布使用 SatelliteResourceLanguages 保留 zh-Hans / zh-CN，系统原生窗口语言仍由 Windows 管理。
+
+## 11. 官方依据
 
 - [.NET 版本与支持期限](https://learn.microsoft.com/en-us/dotnet/core/releases-and-support)
 - [WinForms NotifyIcon](https://learn.microsoft.com/en-us/dotnet/api/system.windows.forms.notifyicon?view=net-10.0)

@@ -55,7 +55,7 @@ public partial class Form1 : Form {
 	}
 
 	private void BuildInterface() {
-		Text = "HardLinkAutoBackup 1.0.0";
+		Text = $"HardLinkAutoBackup {typeof(Form1).Assembly.GetName().Version?.ToString(3)}";
 		Font = new Font("Microsoft YaHei UI", 10);
 		BackColor = UiTheme.Canvas;
 		ClientSize = new Size(1160, 720);
@@ -278,7 +278,7 @@ public partial class Form1 : Form {
 		try {
 			if (update_startup) {
 				string action = dialog.AutoStart.Checked ? "创建或更新" : "移除";
-				string message = $"将{action} Windows 登录计划任务：\r\n{StartupRegistration.TaskName}\r\n\r\n程序：{Environment.ProcessPath}\r\n管理员运行：{dialog.Elevated.Checked}\r\n\r\n该设置会持续生效，可在本界面关闭自启撤销；也可在 Windows 任务计划程序中删除上述任务。\r\n继续时 Windows 可能要求管理员确认。";
+				string message = $"将{action} Windows 登录计划任务：\r\n{StartupRegistration.TaskName}\r\n\r\n程序：{Environment.ProcessPath}\r\n管理员运行：{(dialog.Elevated.Checked ? "是" : "否")}\r\n\r\n该设置会持续生效，可在本界面关闭自启撤销；也可在 Windows 任务计划程序中删除上述任务。\r\n继续时 Windows 可能要求管理员确认。";
 				if (MessageBox.Show(this, message, "确认修改系统自启设置", MessageBoxButtons.OKCancel, MessageBoxIcon.Information) != DialogResult.OK)
 					return;
 				Enabled = false;

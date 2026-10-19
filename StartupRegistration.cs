@@ -47,7 +47,7 @@ internal static class StartupRegistration {
 			return "存在不属于本程序的同名任务，不能修改。";
 		string command = xml.Descendants(Schema + "Command").FirstOrDefault()?.Value ?? "";
 		string level = xml.Descendants(Schema + "RunLevel").FirstOrDefault()?.Value ?? "";
-		return $"任务：{TaskName}\r\n启用：{existing.Enabled}\r\n管理员：{level == "HighestAvailable"}\r\n路径：{command}\r\n路径匹配当前程序：{command.Equals(Environment.ProcessPath, StringComparison.OrdinalIgnoreCase)}";
+		return $"任务：{TaskName}\r\n启用：{((bool)existing.Enabled ? "是" : "否")}\r\n管理员：{(level == "HighestAvailable" ? "是" : "否")}\r\n路径：{command}\r\n路径匹配当前程序：{(command.Equals(Environment.ProcessPath, StringComparison.OrdinalIgnoreCase) ? "是" : "否")}";
 	}
 
 	public static async Task ApplyAsync(bool enabled, bool elevated, AppStore store) {
@@ -55,8 +55,7 @@ internal static class StartupRegistration {
 		if (IsAdministrator()) { Apply(enabled, elevated); return; }
 		if (!elevated) {
 			try { Apply(enabled, false); return; }
-			catch (COMException exception) when (exception.HResult == unchecked((int)0x80070005)) { }
-			catch (UnauthorizedAccessException) { }
+			catch (Exception exception) when (exception.HResult == unchecked((int)0x80070005)) { }
 		}
 		string result_path = Path.Combine(store.DataDirectory, $"startup-result-{Guid.NewGuid():N}.txt");
 		var start = new ProcessStartInfo(Environment.ProcessPath!) { UseShellExecute = true, Verb = "runas", WindowStyle = ProcessWindowStyle.Hidden };
@@ -75,29 +74,49 @@ internal static class StartupRegistration {
 	}
 
 	private static object? FindTask(ComScope scope, dynamic folder) {
-		try { return scope.Add(folder.GetTask(TaskName)); }
-		catch (COMException exception) when (exception.HResult == unchecked((int)0x80070002)) { return null; }
+		return ReadExistingTask(() => scope.Add(folder.GetTask(TaskName)));
+	}
+
+	internal static object? ReadExistingTask(Func<object> lookup) {
+		try { return lookup(); }
+		// CLR 会将相同的 HRESULT 映射成 FileNotFoundException，不能只捕获 COMException。
+		// 仅在 GetTask 查询边界将“任务不存在”视为正常；注册失败仍须向上报告。
+		catch (Exception exception) when (exception.HResult == unchecked((int)0x80070002)) { return null; }
 	}
 
 	public static void Apply(bool enabled, bool elevated) {
-		using var scope = new ComScope();
-		dynamic service = scope.Add(Activator.CreateInstance(Type.GetTypeFromProgID("Schedule.Service") ?? throw new IOException("Windows 任务计划服务不可用。"))!);
-		service.Connect();
-		dynamic folder = scope.Add(service.GetFolder("\\"));
-		dynamic? existing = FindTask(scope, folder);
-		if (existing is not null) {
-			XDocument xml = XDocument.Parse((string)existing.Xml);
-			if (xml.Descendants(Schema + "Description").FirstOrDefault()?.Value != OWNER)
-				throw new IOException("同名计划任务不属于本程序，已停止操作。");
+		string stage = "连接 Windows 任务计划服务";
+		try {
+			using var scope = new ComScope();
+			dynamic service = scope.Add(Activator.CreateInstance(Type.GetTypeFromProgID("Schedule.Service") ?? throw new IOException("Windows 任务计划服务不可用。"))!);
+			service.Connect();
+			stage = "打开任务计划根目录";
+			dynamic folder = scope.Add(service.GetFolder("\\"));
+			stage = "查询当前用户自启任务";
+			dynamic? existing = FindTask(scope, folder);
+			if (existing is not null) {
+				XDocument xml = XDocument.Parse((string)existing.Xml);
+				if (xml.Descendants(Schema + "Description").FirstOrDefault()?.Value != OWNER)
+					throw new IOException("同名计划任务不属于本程序，已停止操作。");
+			}
+			if (!enabled) {
+				stage = "移除自启任务";
+				if (existing is not null)
+					folder.DeleteTask(TaskName, 0);
+				return;
+			}
+			string user = WindowsIdentity.GetCurrent().User!.Value;
+			string definition = BuildDefinition(user, Environment.ProcessPath!, elevated);
+			stage = "注册自启任务";
+			scope.Add(folder.RegisterTask(TaskName, definition, 6, user, null, 3, null));
 		}
-		if (!enabled) {
-			if (existing is not null)
-				folder.DeleteTask(TaskName, 0);
-			return;
+		catch (Exception exception) { throw new StartupOperationException(stage, exception); }
+	}
+
+	private sealed class StartupOperationException : IOException {
+		public StartupOperationException(string stage, Exception inner) : base($"{stage}失败（0x{inner.HResult:X8}）：{inner.Message}", inner) {
+			HResult = inner.HResult;
 		}
-		string user = WindowsIdentity.GetCurrent().User!.Value;
-		string definition = BuildDefinition(user, Environment.ProcessPath!, elevated);
-		scope.Add(folder.RegisterTask(TaskName, definition, 6, user, null, 3, null));
 	}
 
 	private sealed class ComScope : IDisposable {

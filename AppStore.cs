@@ -15,6 +15,14 @@ internal sealed class AppStore {
 		DataDirectory = Path.GetFullPath(data_directory ?? Path.Combine(AppContext.BaseDirectory, "data"));
 	}
 
+	public void EnsureWritable() {
+		Directory.CreateDirectory(DataDirectory);
+		string probe = Path.Combine(DataDirectory, $".write-check-{Guid.NewGuid():N}.tmp");
+		using var stream = new FileStream(probe, FileMode.CreateNew, FileAccess.Write, FileShare.None, 1, FileOptions.DeleteOnClose);
+		stream.WriteByte(0);
+		stream.Flush(true);
+	}
+
 	public AppSettings Load() {
 		Directory.CreateDirectory(DataDirectory);
 		return File.Exists(ConfigurationPath) ? ReadSettings(ConfigurationPath) : new AppSettings();

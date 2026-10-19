@@ -62,6 +62,7 @@ internal static class DemoChecks {
 			File.WriteAllText(long_file, "long path");
 			Check(engine.Scan(task, [task], CancellationToken.None).Failed == 0 && NativeFiles.Identity(long_file) == NativeFiles.Identity(Path.Combine(destination, Path.GetRelativePath(source, long_file))), "长路径 Unicode 文件建链", results);
 			RunReleaseChecks(run_root, task, engine, results);
+			RunStartupChecks(run_root, results);
 			RunCoordinatorChecks(run_root, results);
 			File.WriteAllText(Path.Combine(root, "latest-results.txt"), $"测试目录：{run_root}\r\n{string.Join("\r\n", results)}\r\nALL PASSED\r\n", new UTF8Encoding(true));
 			return 0;
@@ -153,6 +154,43 @@ internal static class DemoChecks {
 		Check(load.Failed == 0 && load.Created == 2000 && load.Visited >= 2000, $"2000 文件完整扫描（{load.DurationSeconds:F2} 秒）", results);
 		ScanResult one = engine.Scan(task, [task], CancellationToken.None, changes: [changed]);
 		Check(one.Visited == 1 && one.Failed == 0, "大目录中的单文件变化仍只检查一项", results);
+	}
+
+
+	private static void RunStartupChecks(string root, List<string> results) {
+		Exception mapped = System.Runtime.InteropServices.Marshal.GetExceptionForHR(unchecked((int)0x80070002))!;
+		Check(mapped is FileNotFoundException && StartupRegistration.ReadExistingTask(() => throw mapped) is null, "CLR 映射的任务不存在异常可继续创建", results);
+		Check(StartupRegistration.ReadExistingTask(() => throw new System.Runtime.InteropServices.COMException("missing", unchecked((int)0x80070002))) is null, "COM 形式的任务不存在异常同样处理", results);
+		object existing = new();
+		Check(ReferenceEquals(existing, StartupRegistration.ReadExistingTask(() => existing)), "已有计划任务正常返回", results);
+		bool denied = false;
+		try { StartupRegistration.ReadExistingTask(() => throw new UnauthorizedAccessException("denied")); }
+		catch (UnauthorizedAccessException) { denied = true; }
+		Check(denied, "查询权限不足不能误判为任务不存在", results);
+		var store = new AppStore(Path.Combine(root, "write-probe"));
+		store.EnsureWritable();
+		Check(Directory.Exists(store.DataDirectory) && Directory.GetFiles(store.DataDirectory).Length == 0, "启动可写检查不残留探针文件", results);
+		int confirmations = 0;
+		int restarts = 0;
+		var messages = new List<string>();
+		bool Confirm() { confirmations++; return true; }
+		void Restart() { restarts++; }
+		void Deny() { throw new UnauthorizedAccessException("test"); }
+		bool normal = StartupAccess.EnsureDataAccess(store.EnsureWritable, false, Confirm, Restart, messages.Add);
+		Check(normal && confirmations == 0 && restarts == 0, "普通可写目录不请求管理员", results);
+		bool protected_path = StartupAccess.EnsureDataAccess(Deny, false, Confirm, Restart, messages.Add);
+		Check(!protected_path && confirmations == 1 && restarts == 1, "数据目录无权限时先确认再请求重启", results);
+		bool declined = StartupAccess.EnsureDataAccess(Deny, false, () => false, Restart, messages.Add);
+		Check(!declined && restarts == 1, "拒绝提权不继续读写数据也不重启", results);
+		bool cancelled = StartupAccess.EnsureDataAccess(Deny, false, Confirm, () => throw new System.ComponentModel.Win32Exception(1223), messages.Add);
+		Check(!cancelled && messages.Last().Contains("已取消管理员授权"), "取消 UAC 给出可执行的退出提示", results);
+		bool administrator = StartupAccess.EnsureDataAccess(Deny, true, Confirm, Restart, messages.Add);
+		Check(!administrator && restarts == 1 && messages.Last().Contains("已经以管理员身份运行"), "管理员仍不可写时避免循环提权", results);
+		bool other_error = false;
+		try { StartupAccess.EnsureDataAccess(() => throw new IOException("disk error"), false, Confirm, Restart, messages.Add); }
+		catch (IOException) { other_error = true; }
+		Check(other_error, "磁盘等非权限错误不误触发提权", results);
+		Check(Thread.CurrentThread.CurrentUICulture.Name == "zh-CN", "应用 UI 资源固定为简体中文", results);
 	}
 
 	private static void Check(bool condition, string name, List<string> results) {

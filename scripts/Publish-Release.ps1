@@ -1,4 +1,4 @@
-﻿param([string]$Version = '1.0.0')
+﻿param([string]$Version = '1.0.1')
 
 $ErrorActionPreference = 'Stop'
 if ($Version -notmatch '^\d+\.\d+\.\d+$') { throw '版本号格式应为 1.0.0。' }
@@ -28,6 +28,8 @@ dotnet restore HardLinkAutoBackup.csproj -r win-x64 --source https://api.nuget.o
 if ($LASTEXITCODE -ne 0) { throw '发布还原失败。' }
 dotnet publish HardLinkAutoBackup.csproj --no-restore -c Release -r win-x64 --self-contained true -o $publish --disable-build-servers -p:UseSharedCompilation=false -p:EnableDiagnostics=false -p:Version=$Version -p:PublishSingleFile=false -p:PublishTrimmed=false -p:DebugType=None -p:DebugSymbols=false
 if ($LASTEXITCODE -ne 0) { throw '发布编译失败。' }
+$unexpected_resources = Get-ChildItem -LiteralPath $publish -File -Recurse -Filter '*.resources.dll' | Where-Object { $_.Directory.Name -notin @('zh-Hans', 'zh-CN') }
+if ($unexpected_resources) { throw '发布包包含非简体中文卫星资源，已停止打包。' }
 Copy-Item -LiteralPath (Join-Path $project_root 'docs\user-guide.md') -Destination (Join-Path $publish '使用说明.md')
 Copy-Item -LiteralPath (Join-Path $project_root 'CHANGELOG.md') -Destination $publish
 Copy-Item -LiteralPath (Join-Path $project_root 'docs\release-validation.md') -Destination (Join-Path $publish '验证记录.md')
