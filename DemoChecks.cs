@@ -61,6 +61,7 @@ internal static class DemoChecks {
 			string long_file = Path.Combine(long_directory, "长路径.txt");
 			File.WriteAllText(long_file, "long path");
 			Check(engine.Scan(task, [task], CancellationToken.None).Failed == 0 && NativeFiles.Identity(long_file) == NativeFiles.Identity(Path.Combine(destination, Path.GetRelativePath(source, long_file))), "长路径 Unicode 文件建链", results);
+			RunReleaseChecks(run_root, task, engine, results);
 			RunCoordinatorChecks(run_root, results);
 			File.WriteAllText(Path.Combine(root, "latest-results.txt"), $"测试目录：{run_root}\r\n{string.Join("\r\n", results)}\r\nALL PASSED\r\n", new UTF8Encoding(true));
 			return 0;
@@ -69,6 +70,89 @@ internal static class DemoChecks {
 			File.WriteAllText(Path.Combine(root, "latest-results.txt"), $"测试目录：{run_root}\r\n{string.Join("\r\n", results)}\r\nFAILED: {exception}\r\n", new UTF8Encoding(true));
 			return 1;
 		}
+	}
+
+
+	private static void RunReleaseChecks(string root, BackupTask task, BackupEngine engine, List<string> results) {
+		string changed = Path.Combine(task.Source, "partial.txt");
+		File.WriteAllText(changed, "partial");
+		ScanResult partial = engine.Scan(task, [task], CancellationToken.None, changes: [changed]);
+		Check(!partial.FullScan && partial.Visited == 1 && partial.Created == 1 && partial.Failed == 0, "变化扫描只检查指定文件", results);
+		string sub = Path.Combine(task.Source, "sub");
+		Directory.CreateDirectory(sub);
+		File.WriteAllText(Path.Combine(sub, "a.txt"), "a");
+		File.WriteAllText(Path.Combine(sub, "b.txt"), "b");
+		ScanResult merged = engine.Scan(task, [task], CancellationToken.None, changes: [sub, Path.Combine(sub, "a.txt")]);
+		Check(merged.Visited == 2 && merged.Created == 2, "父子变化路径合并去重", results);
+		var buffer = new ChangeBuffer();
+		for (int index = 0; index < 1100; index++)
+			buffer.Add(Path.Combine(task.Source, index.ToString()));
+		Check(buffer.Drain() is null && buffer.Drain()!.Length == 0, "事件队列有界且溢出退回完整扫描", results);
+		var wrong_volume = task.Snapshot();
+		wrong_volume.VolumeIdentity = "wrong-volume";
+		wrong_volume.Destination = Path.Combine(root, "wrong-volume-target");
+		Check(engine.Scan(wrong_volume, [wrong_volume], CancellationToken.None).Failed == 1 && !Directory.Exists(wrong_volume.Destination), "卷身份变化拒绝写入", results);
+		var data_target = task.Snapshot();
+		data_target.Destination = Path.Combine(root, "data");
+		Check(engine.Scan(data_target, [data_target], CancellationToken.None).Failed == 1, "拒绝备份覆盖程序数据目录", results);
+		var relative = task.Snapshot();
+		relative.Source = "relative";
+		Check(engine.Scan(relative, [relative], CancellationToken.None).Failed == 1, "拒绝相对源路径", results);
+		var invalid_rule = task.Snapshot();
+		invalid_rule.Exclusions = ["../escape"];
+		Check(engine.Scan(invalid_rule, [invalid_rule], CancellationToken.None).Failed == 1, "拒绝越界排除规则", results);
+		var store = new AppStore(Path.Combine(root, "recovery"));
+		store.Save(new AppSettings { Tasks = [task], AutomaticEnabled = false });
+		store.Save(new AppSettings { Tasks = [task], AutomaticEnabled = true });
+		File.WriteAllText(store.ConfigurationPath, "{broken");
+		bool rejected = false;
+		try { store.Load(); }
+		catch (System.Text.Json.JsonException) { rejected = true; }
+		Check(rejected, "损坏配置不静默覆盖", results);
+		Check(!store.RestoreBackup().AutomaticEnabled && Directory.GetFiles(store.DataDirectory, "settings.damaged-*.json").Length == 1, "配置备份恢复且保留损坏文件", results);
+		File.WriteAllText(store.ConfigurationPath, "{\"Version\":1,\"Tasks\":[null]}");
+		bool null_rejected = false;
+		try { store.Load(); }
+		catch (InvalidDataException) { null_rejected = true; }
+		Check(null_rejected, "空任务配置被拒绝", results);
+		string reserved_source = Path.Combine(root, "reserved-source");
+		Directory.CreateDirectory(Path.Combine(reserved_source, PathRules.CONFLICT_DIRECTORY));
+		var reserved = new BackupTask { Source = reserved_source, Destination = Path.Combine(root, "reserved-target") };
+		Check(engine.Scan(reserved, [reserved], CancellationToken.None).Failed == 1 && !Directory.Exists(reserved.Destination), "拒绝源顶层冲突区保留名", results);
+		string blocked_source = Path.Combine(root, "blocked-source");
+		Directory.CreateDirectory(blocked_source);
+		File.WriteAllText(Path.Combine(blocked_source, "blocked.txt"), "blocked");
+		File.WriteAllText(Path.Combine(blocked_source, "good.txt"), "good");
+		var blocked = new BackupTask { Source = blocked_source, Destination = Path.Combine(root, "blocked-target") };
+		Directory.CreateDirectory(blocked.Destination);
+		File.WriteAllText(Path.Combine(blocked.Destination, "blocked.txt"), "old-object");
+		string blocked_conflict = Path.Combine(blocked.Destination, PathRules.CONFLICT_DIRECTORY);
+		File.WriteAllText(blocked_conflict, "not-a-directory");
+		ScanResult blocked_result = engine.Scan(blocked, [blocked], CancellationToken.None);
+		Check(blocked_result.Failed == 1 && File.Exists(Path.Combine(blocked.Destination, "good.txt")), "单项路径创建失败不阻断其他文件", results);
+		File.Delete(blocked_conflict);
+		Check(engine.Scan(blocked, [blocked], CancellationToken.None).Failed == 0
+			&& File.ReadAllText(Path.Combine(blocked.Destination, "blocked.txt")) == "old-object", "解除路径阻塞后补建且旧对象保留", results);
+		File.WriteAllText(Path.Combine(blocked.Destination, "foreign.txt"), "keep");
+		File.WriteAllText(Path.Combine(blocked_source, "foreign.txt"), "new");
+		Check(engine.Scan(blocked, [blocked], CancellationToken.None).Conflicts == 2 && File.ReadAllText(Path.Combine(blocked.Destination, "foreign.txt")) == "keep", "用户目标同名文件原样保留", results);
+		string executable = Path.Combine(root, "A & B", "backup.exe");
+		string xml = StartupRegistration.BuildDefinition("S-1-5-21-test", executable, true);
+		var document = System.Xml.Linq.XDocument.Parse(xml);
+		System.Xml.Linq.XNamespace schema = "http://schemas.microsoft.com/windows/2004/02/mit/task";
+		Check(document.Descendants(schema + "Command").Single().Value == executable
+			&& document.Descendants(schema + "RunLevel").Single().Value == "HighestAvailable"
+			&& document.Descendants(schema + "ExecutionTimeLimit").Single().Value == "PT0S"
+			&& document.Descendants(schema + "LogonType").Single().Value == "InteractiveToken", "自启 XML 转义、权限与无限运行时长", results);
+		Check(StartupRegistration.BuildDefinition("user", executable, false).Contains("LeastPrivilege"), "普通权限自启定义", results);
+		string many = Path.Combine(task.Source, "many");
+		Directory.CreateDirectory(many);
+		for (int index = 0; index < 2000; index++)
+			File.WriteAllText(Path.Combine(many, index + ".txt"), "load");
+		ScanResult load = engine.Scan(task, [task], CancellationToken.None);
+		Check(load.Failed == 0 && load.Created == 2000 && load.Visited >= 2000, $"2000 文件完整扫描（{load.DurationSeconds:F2} 秒）", results);
+		ScanResult one = engine.Scan(task, [task], CancellationToken.None, changes: [changed]);
+		Check(one.Visited == 1 && one.Failed == 0, "大目录中的单文件变化仍只检查一项", results);
 	}
 
 	private static void Check(bool condition, string name, List<string> results) {
@@ -107,13 +191,19 @@ internal static class DemoChecks {
 			coordinator.Tick();
 			await WaitUntilAsync(() => !coordinator.IsRunning && File.Exists(Path.Combine(task.Destination, "first.txt")), coordinator);
 			Check(true, "后台首次扫描", results);
+			DateTimeOffset due = coordinator.State(task).NextRun;
 			File.WriteAllText(Path.Combine(source, "watched.txt"), "event");
 			await WaitUntilAsync(() => !coordinator.IsRunning && File.Exists(Path.Combine(task.Destination, "watched.txt")), coordinator);
-			Check(true, "文件监控触发增量扫描", results);
+			Check(coordinator.State(task).Result is { FullScan: false, Visited: 1 }, "文件监控触发单文件变化扫描", results);
+			Check(coordinator.State(task).NextRun == due, "文件事件不推迟周期完整扫描", results);
 			File.Delete(Path.Combine(task.Destination, "first.txt"));
 			coordinator.State(task).NextRun = DateTimeOffset.Now.AddSeconds(-1);
 			await WaitUntilAsync(() => !coordinator.IsRunning && File.Exists(Path.Combine(task.Destination, "first.txt")), coordinator);
 			Check(true, "周期扫描补建遗漏链接", results);
+			coordinator.Reconfigure();
+			DateTimeOffset before = coordinator.State(task).NextRun;
+			coordinator.Reconfigure();
+			Check(coordinator.State(task).NextRun == before, "不相关配置不重置扫描时间", results);
 			settings.AutomaticEnabled = false;
 			coordinator.Reconfigure();
 			File.WriteAllText(Path.Combine(source, "manual.txt"), "manual");
@@ -123,6 +213,24 @@ internal static class DemoChecks {
 			coordinator.Request(task);
 			await WaitUntilAsync(() => !coordinator.IsRunning && File.Exists(Path.Combine(task.Destination, "manual.txt")), coordinator);
 			Check(true, "总开关关闭时手动扫描可用", results);
+			coordinator.Request(task);
+			coordinator.Request(task);
+			coordinator.Cancel(task);
+			await WaitUntilAsync(() => !coordinator.IsRunning, coordinator);
+			await Task.Delay(200);
+			Check(!coordinator.IsRunning && !coordinator.State(task).PendingManual, "取消清除追加手动扫描", results);
+			settings.AutomaticEnabled = true;
+			coordinator.Reconfigure();
+			coordinator.State(task).NextRun = DateTimeOffset.Now.AddHours(1);
+			coordinator.Resume();
+			Check(coordinator.State(task).NextRun <= DateTimeOffset.Now, "恢复通知安排完整补扫", results);
+			coordinator.Tick();
+			await WaitUntilAsync(() => !coordinator.IsRunning, coordinator);
+			Check(coordinator.State(task).Result is { FullScan: true, Failed: 0 }, "恢复补扫完成", results);
+			var restored = new BackupCoordinator(settings, store);
+			restored.RestoreState();
+			Check(restored.State(task).LastFinished is not null && restored.State(task).LastSuccess is not null, "重新启动恢复最近扫描记录", results);
+			await restored.StopAsync();
 		}
 		finally { await coordinator.StopAsync(); }
 		Check(true, "后台任务可取消并退出", results);

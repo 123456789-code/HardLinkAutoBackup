@@ -1,4 +1,5 @@
 ﻿using System.Diagnostics;
+using Microsoft.Win32;
 
 namespace HardLinkAutoBackup;
 
@@ -35,19 +36,26 @@ public partial class Form1 : Form {
 		Shown += (_, _) => {
 			if (Preview)
 				return;
+			Coordinator.RestoreState();
 			Coordinator.Reconfigure();
+			SystemEvents.PowerModeChanged += HandlePowerMode;
 			Pulse.Start();
 			Coordinator.Tick();
 			if (StartHidden && Settings.StayInTray)
 				Hide();
 		};
 		FormClosing += HandleClosing;
-		FormClosed += (_, _) => { Pulse.Dispose(); TrayIcon.Dispose(); };
+		FormClosed += (_, _) => { SystemEvents.PowerModeChanged -= HandlePowerMode; Pulse.Dispose(); TrayIcon.Dispose(); };
 		RefreshTasks();
 	}
 
+	private void HandlePowerMode(object sender, PowerModeChangedEventArgs args) {
+		if (args.Mode == PowerModes.Resume && !IsDisposed && IsHandleCreated)
+			BeginInvoke(() => { if (!ClosingDown) Coordinator.Resume(); });
+	}
+
 	private void BuildInterface() {
-		Text = "HardLinkAutoBackup";
+		Text = "HardLinkAutoBackup 1.0.0";
 		Font = new Font("Microsoft YaHei UI", 10);
 		BackColor = UiTheme.Canvas;
 		ClientSize = new Size(1160, 720);
@@ -193,6 +201,7 @@ public partial class Form1 : Form {
 			row.Cells[4].ToolTipText = "本次扫描确认的硬链接数量；此前保留的已删除源文件不计入本次统计。";
 			row.Cells[5].ToolTipText = state.LastFinished?.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? "尚未扫描";
 			row.Cells[6].ToolTipText = enabled ? state.NextRun.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss") : "自动备份已暂停";
+			row.Cells[3].ToolTipText = state.WatcherWarning;
 			row.Cells[3].Style.ForeColor = state.Result?.Failed > 0 ? Color.Firebrick : enabled ? UiTheme.Blue : UiTheme.Muted;
 		}
 		Summary.Text = $"{Settings.Tasks.Count} 个任务    ·    {Settings.Tasks.Count(task => Coordinator.State(task).Running)} 个运行中    ·    {(Settings.AutomaticEnabled ? "自动备份开启" : "自动备份暂停，仍可手动扫描")}";
@@ -204,7 +213,7 @@ public partial class Form1 : Form {
 		BackupTask? task = SelectedTask();
 		if (task is null) { Details.Text = "尚未选择任务\r\n点击“新建任务”选择源目录和备份目录。源文件会直接建立硬链接。"; return; }
 		TaskState state = Coordinator.State(task);
-		Details.Text = $"{task.Name}   ·   每 {task.IntervalSeconds:N0} 秒完整扫描\r\n{state.Result?.Summary ?? "尚未扫描；运行结果会显示在这里。"}\r\n{state.Result?.Errors.FirstOrDefault() ?? "源文件删除后，备份链接会继续保留。"}";
+		Details.Text = $"{task.Name}   ·   每 {task.IntervalSeconds:N0} 秒完整扫描\r\n{state.Result?.Summary ?? "尚未扫描；运行结果会显示在这里。"}\r\n{Store.LastLogError ?? (state.WatcherWarning.Length > 0 ? state.WatcherWarning : state.Result?.Errors.FirstOrDefault() ?? "源文件删除后，备份链接会继续保留。")}";
 	}
 
 	private void EditTask(BackupTask? original) {
@@ -265,7 +274,7 @@ public partial class Form1 : Form {
 		bool old_admin = Settings.RunAsAdministrator;
 		bool old_auto = Settings.AutomaticEnabled;
 		bool old_tray = Settings.StayInTray;
-		bool update_startup = old_start != dialog.AutoStart.Checked || ((old_start || dialog.AutoStart.Checked) && old_admin != dialog.Elevated.Checked);
+		bool update_startup = dialog.RepairStartup.Checked || old_start != dialog.AutoStart.Checked || ((old_start || dialog.AutoStart.Checked) && old_admin != dialog.Elevated.Checked);
 		try {
 			if (update_startup) {
 				string action = dialog.AutoStart.Checked ? "创建或更新" : "移除";
@@ -285,8 +294,9 @@ public partial class Form1 : Form {
 				Settings.RunAsAdministrator = old_admin;
 				Settings.AutomaticEnabled = old_auto;
 				Settings.StayInTray = old_tray;
+				// 系统变更可能已经完成；不按旧配置猜测并覆盖原先的系统状态。
 				if (update_startup)
-					await StartupRegistration.ApplyAsync(old_start, old_admin, Store);
+					Store.Log("自启系统设置已更新，但配置保存失败。请核对自启状态并使用同步/修复。");
 				throw;
 			}
 			Coordinator.Reconfigure();
@@ -300,7 +310,7 @@ public partial class Form1 : Form {
 		if (SelectedTask() is not BackupTask task)
 			return;
 		ScanResult? result = Coordinator.State(task).Result;
-		ShowText($"{task.Name} · 扫描详情", result is null ? "尚无扫描结果。" : $"{result.Summary}\r\n\r\n异名文件保存在备份目录的 {PathRules.CONFLICT_DIRECTORY} 中。\r\n\r\n{string.Join(Environment.NewLine, result.Errors)}");
+		ShowText($"{task.Name} · 扫描详情", result is null ? "尚无扫描结果。" : $"{result.Summary}\r\n\r\n最近成功：{Coordinator.State(task).LastSuccess?.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? "尚无成功记录"}\r\n监控：{(Coordinator.State(task).WatcherWarning.Length == 0 ? "正常或未启用" : Coordinator.State(task).WatcherWarning)}\r\n\r\n异名文件保存在备份目录的 {PathRules.CONFLICT_DIRECTORY} 中。\r\n\r\n{string.Join(Environment.NewLine, result.Errors)}");
 	}
 
 	private void ShowLog() {

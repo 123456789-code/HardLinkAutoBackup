@@ -1,11 +1,20 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
-
-  <PropertyGroup>
-    <OutputType>WinExe</OutputType>
-    <TargetFramework>net10.0-windows</TargetFramework>
-    <Nullable>enable</Nullable>
-    <UseWindowsForms>true</UseWindowsForms>
-    <ImplicitUsings>enable</ImplicitUsings>
-  </PropertyGroup>
-
+	<PropertyGroup>
+		<OutputType>WinExe</OutputType>
+		<TargetFramework>net10.0-windows</TargetFramework>
+		<Nullable>enable</Nullable>
+		<UseWindowsForms>true</UseWindowsForms>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Version>1.0.0</Version>
+		<Product>HardLinkAutoBackup</Product>
+		<Description>同卷 NTFS 硬链接自动防误删工具</Description>
+		<ApplicationManifest>app.manifest</ApplicationManifest>
+		<DefaultItemExcludes>$(DefaultItemExcludes);.local/**;.demo-checks/**;artifacts/**</DefaultItemExcludes>
+	</PropertyGroup>
+	<PropertyGroup Condition="'$(EnableDiagnostics)' == 'true'">
+		<DefineConstants>$(DefineConstants);DIAGNOSTICS</DefineConstants>
+	</PropertyGroup>
+	<ItemGroup Condition="'$(EnableDiagnostics)' != 'true'">
+		<Compile Remove="DemoChecks.cs" />
+	</ItemGroup>
 </Project>

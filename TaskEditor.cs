@@ -111,9 +111,9 @@ internal sealed class TaskEditor : Form {
 				IntervalSeconds = checked((int)IntervalBox.Value * factors[UnitBox.SelectedIndex]),
 				Exclusions = ExclusionBox.Lines.Select(line => line.Trim()).Where(line => line.Length > 0).ToList()
 			};
-			PathRules.Validate(task, Tasks);
 			if (task.Name.Length == 0)
 				task.Name = new DirectoryInfo(task.Source).Name;
+			PathRules.Validate(task, Tasks);
 			Result = task;
 			DialogResult = DialogResult.OK;
 			Close();

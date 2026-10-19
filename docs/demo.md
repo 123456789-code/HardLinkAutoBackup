@@ -2,6 +2,8 @@
 
 实现日期：2026-10-18。
 
+> 本文保留已验收 demo 的历史范围及环境记录。1.0.0 已完善增量路径扫描、配置恢复和自包含发布；当前行为以 [使用说明](user-guide.md) 和 [交付验证](release-validation.md) 为准。
+
 ## 运行
 
 在 Visual Studio 中打开 `HardLinkAutoBackup.slnx`，按 F5 运行。已编译的 Release 程序位于 `bin/Release/net10.0-windows/HardLinkAutoBackup.exe`；该 demo 使用本机已有的 .NET 10 Windows Desktop Runtime，移动程序时需要保留同目录的 DLL 和配置文件。独立运行、内置运行时的发布包留待正式发布时生成。
