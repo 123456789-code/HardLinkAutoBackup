@@ -36,6 +36,22 @@ internal static class Program {
 		if (args.Length == 2 && args[0] == "--render-preview")
 			return Diagnostics.Render(args[1]);
 #endif
+		if (args.Length == 1 && args[0] is "--check-install" or "--check-uninstall") {
+			try {
+				string mutex_name = $"Local\\HardLinkAutoBackup-{WindowsIdentity.GetCurrent().User!.Value}";
+				if (Mutex.TryOpenExisting(mutex_name, out Mutex? running)) {
+					running.Dispose();
+					throw new IOException("程序仍在运行，请在右下角托盘选择“退出程序”后重试。");
+				}
+				if (args[0] == "--check-uninstall" && StartupRegistration.IsRegisteredForCurrentExecutable())
+					throw new IOException("此安装位置仍注册了登录自启。请打开程序，在“程序设置”中关闭自启并保存，退出程序后再卸载。");
+				return 0;
+			}
+			catch (Exception exception) {
+				MessageBox.Show(exception.Message, "请先完成以下操作", MessageBoxButtons.OK, MessageBoxIcon.Information);
+				return 1;
+			}
+		}
 		var store = new AppStore();
 		AppDomain.CurrentDomain.UnhandledException += (_, event_args) => store.Log($"未处理异常：{event_args.ExceptionObject}");
 		if (args.Length == 5 && args[0] == "--configure-startup") {

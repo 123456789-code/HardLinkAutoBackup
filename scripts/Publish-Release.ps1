@@ -1,4 +1,4 @@
-﻿param([string]$Version = '1.1.0')
+﻿param([string]$Version = '1.1.1', [string]$InstallerCompiler)
 
 $ErrorActionPreference = 'Stop'
 if ($Version -notmatch '^\d+\.\d+\.\d+$') { throw '版本号格式应为 1.0.0。' }
@@ -18,7 +18,7 @@ $env:TEMP = Join-Path $project_root '.local\temp'
 $env:TMP = $env:TEMP
 New-Item -ItemType Directory -Force -Path $env:TEMP | Out-Null
 $release_root = Join-Path $project_root ("artifacts\v" + $Version + '-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
-$package_name = "HardLinkAutoBackup-$Version-win-x64"
+$package_name = "HardLinkAutoBackup-$Version-Portable-x64"
 $publish = Join-Path $release_root $package_name
 if (Test-Path -LiteralPath $release_root) { throw '发布目录已存在，请稍后重试；不会覆盖旧包及用户 data。' }
 New-Item -ItemType Directory -Path $release_root | Out-Null
@@ -33,6 +33,7 @@ if ($unexpected_resources) { throw '发布包包含非简体中文卫星资源�
 Copy-Item -LiteralPath (Join-Path $project_root 'docs\user-guide.md') -Destination (Join-Path $publish '使用说明.md')
 Copy-Item -LiteralPath (Join-Path $project_root 'CHANGELOG.md') -Destination $publish
 Copy-Item -LiteralPath (Join-Path $project_root 'docs\release-validation.md') -Destination (Join-Path $publish '验证记录.md')
+Copy-Item -LiteralPath (Join-Path $project_root 'LICENSE.txt') -Destination $publish
 $runtime_config = Get-Content -LiteralPath (Join-Path $publish 'HardLinkAutoBackup.runtimeconfig.json') -Raw | ConvertFrom-Json
 foreach ($framework in $runtime_config.runtimeOptions.includedFrameworks) {
 	$package_id = $framework.name.ToLowerInvariant() + '.runtime.win-x64'
@@ -55,6 +56,20 @@ $archive = Join-Path $release_root ($package_name + '.zip')
 Compress-Archive -LiteralPath $publish -DestinationPath $archive -CompressionLevel Optimal
 $hash = Get-FileHash -LiteralPath $archive -Algorithm SHA256
 ($hash.Hash.ToLowerInvariant() + '  ' + (Split-Path -Leaf $archive)) | Set-Content -LiteralPath ($archive + '.sha256') -Encoding UTF8
+$assets = @($archive)
+if ($InstallerCompiler) {
+	if (!(Test-Path -LiteralPath $InstallerCompiler -PathType Leaf)) { throw '找不到指定的 Inno Setup 编译器。' }
+	& $InstallerCompiler "/DAppVersion=$Version" "/DSourceDir=$publish" "/DReleaseDir=$release_root" (Join-Path $project_root 'installer\HardLinkAutoBackup.iss')
+	if ($LASTEXITCODE -ne 0) { throw '安装包编译失败。' }
+	$assets += Join-Path $release_root "HardLinkAutoBackup-$Version-Setup-x64.exe"
+}
+$assets | ForEach-Object {
+	((Get-FileHash -LiteralPath $_ -Algorithm SHA256).Hash.ToLowerInvariant()) + '  ' + (Split-Path -Leaf $_)
+} | Set-Content -LiteralPath (Join-Path $release_root 'SHA256SUMS.txt') -Encoding UTF8
+if ($env:GITHUB_OUTPUT) {
+	"release_root=$release_root" >> $env:GITHUB_OUTPUT
+	"version=$Version" >> $env:GITHUB_OUTPUT
+}
 Write-Output "发布目录：$publish"
 Write-Output "交付压缩包：$archive"
 Write-Output "SHA256：$($hash.Hash)"

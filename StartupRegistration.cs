@@ -50,6 +50,20 @@ internal static class StartupRegistration {
 		return $"任务：{TaskName}\r\n启用：{((bool)existing.Enabled ? "是" : "否")}\r\n管理员：{(level == "HighestAvailable" ? "是" : "否")}\r\n路径：{command}\r\n路径匹配当前程序：{(command.Equals(Environment.ProcessPath, StringComparison.OrdinalIgnoreCase) ? "是" : "否")}";
 	}
 
+	public static bool IsRegisteredForCurrentExecutable() {
+		using var scope = new ComScope();
+		dynamic service = scope.Add(Activator.CreateInstance(Type.GetTypeFromProgID("Schedule.Service") ?? throw new IOException("任务计划服务不可用。"))!);
+		service.Connect();
+		dynamic folder = scope.Add(service.GetFolder("\\"));
+		dynamic? existing = FindTask(scope, folder);
+		return existing is not null && ReferencesExecutable((string)existing.Xml, Environment.ProcessPath!);
+	}
+
+	internal static bool ReferencesExecutable(string xml, string executable) {
+		return XDocument.Parse(xml).Descendants(Schema + "Command")
+			.Any(command => command.Value.Equals(executable, StringComparison.OrdinalIgnoreCase));
+	}
+
 	public static async Task ApplyAsync(bool enabled, bool elevated, AppStore store) {
 		Directory.CreateDirectory(store.DataDirectory);
 		if (IsAdministrator()) { Apply(enabled, elevated); return; }

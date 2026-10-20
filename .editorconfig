@@ -1,4 +1,4 @@
-root = true
+﻿root = true
 
 [*]
 
@@ -303,3 +303,7 @@ dotnet_naming_symbols.parameters.applicable_accessibilities = *
 
 dotnet_naming_symbols.enum_members.applicable_kinds = enum_member
 dotnet_naming_symbols.enum_members.applicable_accessibilities = *
+
+[*.{yml,yaml}]
+indent_style = space
+indent_size = 2

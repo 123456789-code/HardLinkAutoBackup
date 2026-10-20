@@ -1,0 +1,92 @@
+﻿name: Build and release
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: '验证通过后发布当前版本'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: windows-2025
+    outputs:
+      version: ${{ steps.package.outputs.version }}
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          dotnet-version: '10.0.x'
+      - name: Build and test
+        run: |
+          ./scripts/Build.ps1
+          ./scripts/Test.ps1
+      - name: Package installer and portable
+        id: package
+        run: |
+          [xml]$project = Get-Content HardLinkAutoBackup.csproj
+          $version = $project.Project.PropertyGroup.Version | Where-Object { $_ } | Select-Object -First 1
+          if ($env:GITHUB_REF_TYPE -eq 'tag' -and $env:GITHUB_REF_NAME -ne "v$version") { throw '标签与项目版本不一致。' }
+          $compiler = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
+          ./scripts/Publish-Release.ps1 -Version $version -InstallerCompiler $compiler
+      - name: Verify installation, upgrade and uninstall
+        env:
+          RELEASE_ROOT: ${{ steps.package.outputs.release_root }}
+        run: ./scripts/Test-Installer.ps1 -ReleaseRoot $env:RELEASE_ROOT
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-assets
+          if-no-files-found: error
+          path: |
+            ${{ steps.package.outputs.release_root }}/*-Setup-x64.exe
+            ${{ steps.package.outputs.release_root }}/*-Portable-x64.zip
+            ${{ steps.package.outputs.release_root }}/SHA256SUMS.txt
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: validation
+          path: |
+            .checks/latest-results.txt
+            .checks/preview/*.txt
+            artifacts/**/installer-test/*
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.publish) || (github.event_name == 'push' && github.ref == 'refs/heads/main' && contains(github.event.head_commit.message, '[release]'))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: release-assets
+          path: release-assets
+      - name: Publish complete release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.build.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="v$VERSION"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "版本已存在；不会覆盖已发布的附件。请提升版本号。"
+            exit 1
+          fi
+          (cd release-assets && sha256sum -c SHA256SUMS.txt)
+          gh release create "$tag" release-assets/* --target "$GITHUB_SHA" --title "HardLinkAutoBackup $VERSION" --notes-file docs/release-notes.md --draft
+          gh release edit "$tag" --draft=false --latest

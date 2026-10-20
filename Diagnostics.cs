@@ -152,6 +152,9 @@ internal static class Diagnostics {
 			&& document.Descendants(schema + "RunLevel").Single().Value == "HighestAvailable"
 			&& document.Descendants(schema + "ExecutionTimeLimit").Single().Value == "PT0S"
 			&& document.Descendants(schema + "LogonType").Single().Value == "InteractiveToken", "自启 XML 转义、权限与无限运行时长", results);
+		Check(StartupRegistration.ReferencesExecutable(xml, executable.ToUpperInvariant()), "卸载识别当前路径自启且忽略大小写", results);
+		Check(!StartupRegistration.ReferencesExecutable(xml, Path.Combine(root, "another.exe")), "卸载不阻断其他位置的自启任务", results);
+		Check(!StartupRegistration.ReferencesExecutable("<Task />", executable), "无执行路径不误判为当前程序自启", results);
 		Check(StartupRegistration.BuildDefinition("user", executable, false).Contains("LeastPrivilege"), "普通权限自启定义", results);
 		string many = Path.Combine(task.Source, "many");
 		Directory.CreateDirectory(many);
