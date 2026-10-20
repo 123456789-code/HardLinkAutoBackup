@@ -5,7 +5,9 @@
 		<Nullable>enable</Nullable>
 		<UseWindowsForms>true</UseWindowsForms>
 		<ImplicitUsings>enable</ImplicitUsings>
-		<Version>1.0.1</Version>
+		<Version>1.1.0</Version>
+		<ApplicationIcon>Assets\App.ico</ApplicationIcon>
+		<ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
 		<SatelliteResourceLanguages>zh-Hans;zh-CN</SatelliteResourceLanguages>
 		<Product>HardLinkAutoBackup</Product>
 		<Description>同卷 NTFS 硬链接自动防误删工具</Description>
@@ -17,5 +19,9 @@
 	</PropertyGroup>
 	<ItemGroup Condition="'$(EnableDiagnostics)' != 'true'">
 		<Compile Remove="DemoChecks.cs" />
+	</ItemGroup>
+	<ItemGroup>
+		<EmbeddedResource Include="Assets\App.ico" />
+		<EmbeddedResource Include="Assets\App.png" />
 	</ItemGroup>
 </Project>

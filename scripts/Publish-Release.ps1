@@ -1,4 +1,4 @@
-﻿param([string]$Version = '1.0.1')
+﻿param([string]$Version = '1.1.0')
 
 $ErrorActionPreference = 'Stop'
 if ($Version -notmatch '^\d+\.\d+\.\d+$') { throw '版本号格式应为 1.0.0。' }

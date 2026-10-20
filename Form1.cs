@@ -7,7 +7,7 @@ public partial class Form1 : Form {
 	private readonly AppSettings Settings;
 	private readonly AppStore Store;
 	private readonly BackupCoordinator Coordinator;
-	private readonly DataGridView Grid = new();
+	private readonly DataGridView Grid = new TaskGrid();
 	private readonly Label Summary = new();
 	private readonly Label Details = new();
 	private readonly CheckBox AutomaticSwitch = new();
@@ -56,43 +56,69 @@ public partial class Form1 : Form {
 
 	private void BuildInterface() {
 		Text = $"HardLinkAutoBackup {typeof(Form1).Assembly.GetName().Version?.ToString(3)}";
-		Font = new Font("Microsoft YaHei UI", 10);
-		BackColor = UiTheme.Canvas;
-		ClientSize = new Size(1160, 720);
-		MinimumSize = new Size(1000, 650);
+		UiTheme.Apply(this);
+		ClientSize = new Size(1200, 780);
+		MinimumSize = new Size(960, 620);
 		StartPosition = FormStartPosition.CenterScreen;
-		Icon = SystemIcons.Shield;
-		var root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 6 };
-		root.RowStyles.Add(new RowStyle(SizeType.Absolute, 104));
-		root.RowStyles.Add(new RowStyle(SizeType.Absolute, 62));
-		root.RowStyles.Add(new RowStyle(SizeType.Absolute, 46));
+		var root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 6, Margin = Padding.Empty };
+		root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+		root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+		root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+		root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 		root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-		root.RowStyles.Add(new RowStyle(SizeType.Absolute, 110));
-		root.RowStyles.Add(new RowStyle(SizeType.Absolute, 44));
-		var header = new Panel { Dock = DockStyle.Fill, Width = ClientSize.Width, BackColor = UiTheme.Navy, Margin = Padding.Empty };
-		header.Controls.Add(new Label { Text = "硬链接自动备份", Location = new Point(24, 20), AutoSize = true, ForeColor = Color.White, Font = new Font(Font.FontFamily, 21, FontStyle.Bold) });
-		header.Controls.Add(new Label { Text = "HARDLINK AUTO BACKUP   /   本地 · 同卷 · 防误删", Location = new Point(27, 65), AutoSize = true, ForeColor = Color.FromArgb(173, 190, 215), Font = new Font(Font.FontFamily, 9) });
+		root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+		root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+		var header = new TableLayoutPanel {
+			Dock = DockStyle.Fill,
+			AutoSize = true,
+			ColumnCount = 3,
+			RowCount = 1,
+			Padding = new Padding(24, 22, 24, 18),
+			BackColor = Color.White,
+			Margin = Padding.Empty
+		};
+		header.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 72));
+		header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+		header.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+		header.Controls.Add(new PictureBox { Image = UiTheme.AppImage, SizeMode = PictureBoxSizeMode.Zoom, Size = new Size(56, 56), Margin = new Padding(0, 0, 16, 0), Anchor = AnchorStyles.Left }, 0, 0);
+		var branding = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false, Margin = Padding.Empty };
+		branding.Controls.Add(new Label { Text = "硬链接自动备份", AutoSize = true, Font = new Font(Font.FontFamily, 22, FontStyle.Bold), Margin = Padding.Empty });
+		branding.Controls.Add(new Label { Text = "同卷硬链接  /  文件变化监控  /  周期补漏", AutoSize = true, ForeColor = UiTheme.Muted, Margin = new Padding(2, 6, 0, 0) });
+		header.Controls.Add(branding, 1, 0);
 		Button settings_button = UiTheme.Button("程序设置", async (_, _) => await EditSettingsAsync());
-		settings_button.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-		settings_button.Location = new Point(ClientSize.Width - 138, 34);
-		header.Controls.Add(settings_button);
+		settings_button.Anchor = AnchorStyles.Right;
+		settings_button.Margin = Padding.Empty;
+		header.Controls.Add(settings_button, 2, 0);
 		root.Controls.Add(header, 0, 0);
-		var toolbar = new FlowLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(24, 14, 0, 0), WrapContents = false };
-		toolbar.Controls.Add(UiTheme.Button("＋ 新建任务", (_, _) => EditTask(null), true));
-		toolbar.Controls.Add(UiTheme.Button("编辑任务", (_, _) => { if (SelectedTask() is BackupTask task) EditTask(task); }));
+		var toolbar = new FlowLayoutPanel {
+			Dock = DockStyle.Fill,
+			AutoSize = true,
+			AutoSizeMode = AutoSizeMode.GrowAndShrink,
+			Padding = new Padding(24, 20, 16, 4),
+			WrapContents = true,
+			Margin = Padding.Empty
+		};
+		toolbar.Controls.Add(UiTheme.Button("新建任务", (_, _) => EditTask(null), true));
 		toolbar.Controls.Add(UiTheme.Button("立即扫描", (_, _) => { if (SelectedTask() is BackupTask task) Coordinator.Request(task); }));
+		toolbar.Controls.Add(UiTheme.Button("编辑任务", (_, _) => { if (SelectedTask() is BackupTask task) EditTask(task); }));
 		toolbar.Controls.Add(UiTheme.Button("启用 / 暂停", (_, _) => ToggleSelected()));
 		toolbar.Controls.Add(UiTheme.Button("取消扫描", (_, _) => { if (SelectedTask() is BackupTask task) Coordinator.Cancel(task); }));
-		toolbar.Controls.Add(UiTheme.Button("移除任务", (_, _) => RemoveSelected()));
 		toolbar.Controls.Add(UiTheme.Button("查看日志", (_, _) => ShowLog()));
+		Button remove = UiTheme.Button("移除任务", (_, _) => RemoveSelected());
+		remove.ForeColor = Color.FromArgb(166, 42, 48);
+		toolbar.Controls.Add(remove);
 		root.Controls.Add(toolbar, 0, 1);
-		var status = new Panel { Dock = DockStyle.Fill, Padding = new Padding(24, 0, 24, 0) };
+		var status = new TableLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, ColumnCount = 2, Padding = new Padding(24, 4, 24, 14), Margin = Padding.Empty };
+		status.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+		status.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+		Summary.AutoSize = true;
 		Summary.Dock = DockStyle.Fill;
 		Summary.TextAlign = ContentAlignment.MiddleLeft;
 		Summary.ForeColor = UiTheme.Muted;
-		AutomaticSwitch.Text = "自动备份总开关";
+		Summary.Margin = new Padding(0, 5, 12, 5);
+		AutomaticSwitch.Text = "自动备份";
 		AutomaticSwitch.AutoSize = true;
-		AutomaticSwitch.Dock = DockStyle.Right;
+		AutomaticSwitch.Anchor = AnchorStyles.Right;
 		AutomaticSwitch.Checked = Settings.AutomaticEnabled;
 		AutomaticSwitch.CheckedChanged += (_, _) => {
 			if (Refreshing)
@@ -104,11 +130,12 @@ public partial class Form1 : Form {
 			Coordinator.Reconfigure();
 			RefreshTasks();
 		};
-		status.Controls.Add(Summary);
-		status.Controls.Add(AutomaticSwitch);
+
+		status.Controls.Add(Summary, 0, 0);
+		status.Controls.Add(AutomaticSwitch, 1, 0);
 		root.Controls.Add(status, 0, 2);
 		Grid.Dock = DockStyle.Fill;
-		Grid.Margin = new Padding(24, 0, 24, 10);
+		Grid.Margin = new Padding(24, 0, 24, 16);
 		Grid.BackgroundColor = Color.White;
 		Grid.BorderStyle = BorderStyle.None;
 		Grid.ReadOnly = true;
@@ -120,16 +147,20 @@ public partial class Form1 : Form {
 		Grid.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
 		Grid.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
 		Grid.EnableHeadersVisualStyles = false;
-		Grid.ColumnHeadersHeight = 42;
-		Grid.ColumnHeadersDefaultCellStyle.BackColor = Color.FromArgb(232, 237, 245);
+		Grid.ColumnHeadersHeight = 44;
+		Grid.ColumnHeadersDefaultCellStyle.BackColor = Color.FromArgb(233, 238, 244);
 		Grid.ColumnHeadersDefaultCellStyle.ForeColor = UiTheme.Navy;
 		Grid.ColumnHeadersDefaultCellStyle.WrapMode = DataGridViewTriState.False;
-		Grid.RowTemplate.Height = 46;
-		Grid.DefaultCellStyle.SelectionBackColor = Color.FromArgb(224, 235, 255);
+		Grid.RowTemplate.Height = 52;
+		Grid.DefaultCellStyle.SelectionBackColor = Color.FromArgb(226, 239, 252);
 		Grid.DefaultCellStyle.SelectionForeColor = UiTheme.Navy;
-		Grid.DefaultCellStyle.Padding = new Padding(6, 0, 6, 0);
+		Grid.DefaultCellStyle.Padding = new Padding(8, 10, 8, 10);
 		Grid.AlternatingRowsDefaultCellStyle.BackColor = Color.FromArgb(249, 251, 254);
 		Grid.CellBorderStyle = DataGridViewCellBorderStyle.SingleHorizontal;
+		Grid.ColumnHeadersDefaultCellStyle.SelectionBackColor = Color.FromArgb(233, 238, 244);
+		Grid.ColumnHeadersDefaultCellStyle.SelectionForeColor = UiTheme.Navy;
+		Grid.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
+		Grid.AutoSizeRowsMode = DataGridViewAutoSizeRowsMode.AllCells;
 		Grid.GridColor = Color.FromArgb(232, 237, 245);
 		AddColumn("任务", 100);
 		AddColumn("源目录", 160);
@@ -141,17 +172,36 @@ public partial class Form1 : Form {
 		Grid.SelectionChanged += (_, _) => RefreshDetails();
 		Grid.CellDoubleClick += (_, args) => { if (args.RowIndex >= 0 && SelectedTask() is BackupTask task) EditTask(task); };
 		root.Controls.Add(Grid, 0, 3);
-		var detail_panel = new Panel { Dock = DockStyle.Fill, Padding = new Padding(24, 4, 24, 8) };
+
+		var detail_panel = new TableLayoutPanel {
+			Dock = DockStyle.Fill,
+			AutoSize = true,
+			ColumnCount = 2,
+			BackColor = Color.White,
+			Padding = new Padding(20, 16, 12, 12),
+			Margin = new Padding(24, 0, 24, 16)
+		};
+		detail_panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+		detail_panel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+		Details.AutoSize = true;
 		Details.Dock = DockStyle.Fill;
 		Details.ForeColor = UiTheme.Muted;
-		Details.AutoEllipsis = true;
-		var detail_buttons = new FlowLayoutPanel { Dock = DockStyle.Right, Width = 120, FlowDirection = FlowDirection.TopDown };
+		Details.Margin = new Padding(0, 4, 16, 8);
+		var detail_buttons = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false, Margin = Padding.Empty };
 		detail_buttons.Controls.Add(UiTheme.Button("扫描详情", (_, _) => ShowDetails()));
 		detail_buttons.Controls.Add(UiTheme.Button("打开备份", (_, _) => OpenBackup()));
-		detail_panel.Controls.Add(Details);
-		detail_panel.Controls.Add(detail_buttons);
+		detail_panel.Controls.Add(Details, 0, 0);
+		detail_panel.Controls.Add(detail_buttons, 1, 0);
 		root.Controls.Add(detail_panel, 0, 4);
-		root.Controls.Add(new Label { Text = "硬链接共享文件内容：删除源路径后备份仍在；原地修改或加密会同时影响备份。", Dock = DockStyle.Fill, BackColor = Color.FromArgb(255, 247, 225), ForeColor = Color.FromArgb(123, 88, 29), TextAlign = ContentAlignment.MiddleLeft, Padding = new Padding(24, 0, 10, 0) }, 0, 5);
+		root.Controls.Add(new Label {
+			Text = "使用提醒   硬链接共享内容：删除源路径后备份仍在；原地修改或加密会同时影响备份。",
+			AutoSize = true,
+			Dock = DockStyle.Fill,
+			BackColor = Color.FromArgb(255, 248, 231),
+			ForeColor = Color.FromArgb(119, 85, 32),
+			Padding = new Padding(24, 12, 24, 12),
+			Margin = Padding.Empty
+		}, 0, 5);
 		Controls.Add(root);
 		var menu = new ContextMenuStrip();
 		menu.Items.Add("打开界面", null, (_, _) => ShowWindow());
@@ -159,7 +209,7 @@ public partial class Form1 : Form {
 		menu.Items.Add("立即扫描全部任务", null, (_, _) => { foreach (BackupTask task in Settings.Tasks) Coordinator.Request(task); });
 		menu.Items.Add(new ToolStripSeparator());
 		menu.Items.Add("退出程序", null, async (_, _) => await ExitAsync());
-		TrayIcon.Icon = SystemIcons.Shield;
+		TrayIcon.Icon = UiTheme.AppIcon;
 		TrayIcon.Text = "硬链接自动备份";
 		TrayIcon.ContextMenuStrip = menu;
 		TrayIcon.Visible = !Preview;
@@ -167,7 +217,7 @@ public partial class Form1 : Form {
 	}
 
 	private void AddColumn(string name, float weight) {
-		Grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = name, FillWeight = weight, SortMode = DataGridViewColumnSortMode.NotSortable });
+		Grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = name, FillWeight = weight, MinimumWidth = 112, SortMode = DataGridViewColumnSortMode.NotSortable });
 	}
 
 	private BackupTask? SelectedTask() {
@@ -319,7 +369,8 @@ public partial class Form1 : Form {
 	}
 
 	private void ShowText(string title, string text) {
-		using var window = new Form { Text = title, Size = new Size(850, 530), Font = Font, StartPosition = FormStartPosition.CenterParent, MinimizeBox = false };
+		using var window = new Form { Text = title, Size = new Size(900, 560), StartPosition = FormStartPosition.CenterParent, MinimizeBox = false };
+		UiTheme.Apply(window);
 		window.Controls.Add(new TextBox { Multiline = true, ReadOnly = true, Dock = DockStyle.Fill, ScrollBars = ScrollBars.Both, WordWrap = false, Text = text, BackColor = Color.White });
 		window.ShowDialog(this);
 	}

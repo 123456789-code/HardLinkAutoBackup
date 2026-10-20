@@ -286,29 +286,68 @@ internal static class DemoChecks {
 
 	public static int Render(string output_directory) {
 		Directory.CreateDirectory(output_directory);
+		var report = new List<string>();
 		try {
-			var settings = new AppSettings { Tasks = [new BackupTask { Name = "工作文档", Source = @"E:\Documents", Destination = @"E:\Backups\Documents" }, new BackupTask { Name = "照片资料", Source = @"E:\Photos", Destination = @"E:\Backups\Photos", Enabled = false }] };
-			using var main = new Form1(settings, new AppStore(Path.Combine(output_directory, "preview-data")), false, true);
-			RenderForm(main, Path.Combine(output_directory, "main.png"));
-			using var editor = new TaskEditor(settings.Tasks, settings.Tasks[0]);
-			RenderForm(editor, Path.Combine(output_directory, "task-editor.png"));
-			using var preferences = new SettingsDialog(settings, Path.Combine(AppContext.BaseDirectory, "data"));
-			RenderForm(preferences, Path.Combine(output_directory, "settings.png"));
+			foreach (float scale in new[] { 1f, 1.5f, 2f }) {
+				foreach (bool compact in new[] { false, true }) {
+					var settings = new AppSettings { Tasks = [new BackupTask { Name = "工作文档", Source = @"E:\Documents", Destination = @"E:\Backups\Documents" }, new BackupTask { Name = "照片资料", Source = @"E:\Photos", Destination = @"E:\Backups\Photos", Enabled = false }] };
+					string suffix = scale == 1 && !compact ? "" : $"-{scale * 100:0}{(compact ? "-compact" : "")}";
+					using var main = new Form1(settings, new AppStore(Path.Combine(output_directory, "preview-data")), false, true);
+					RenderForm(main, Path.Combine(output_directory, $"main{suffix}.png"), scale, compact, report);
+					using var editor = new TaskEditor(settings.Tasks, settings.Tasks[0]);
+					RenderForm(editor, Path.Combine(output_directory, $"task-editor{suffix}.png"), scale, compact, report);
+					using var preferences = new SettingsDialog(settings, Path.Combine(AppContext.BaseDirectory, "data"));
+					RenderForm(preferences, Path.Combine(output_directory, $"settings{suffix}.png"), scale, compact, report);
+				}
+			}
+			File.WriteAllLines(Path.Combine(output_directory, "layout-results.txt"), report, new UTF8Encoding(true));
 			return 0;
 		}
-		catch (Exception exception) { File.WriteAllText(Path.Combine(output_directory, "render-error.txt"), exception.ToString()); return 1; }
+		catch (Exception exception) {
+			File.WriteAllText(Path.Combine(output_directory, "render-error.txt"), exception.ToString());
+			File.WriteAllLines(Path.Combine(output_directory, "layout-results.txt"), report, new UTF8Encoding(true));
+			return 1;
+		}
 	}
 
-	private static void RenderForm(Form form, string path) {
+	private static void RenderForm(Form form, string path, float scale, bool compact, List<string> report) {
 		form.StartPosition = FormStartPosition.Manual;
 		form.Location = new Point(-32000, -32000);
 		form.ShowInTaskbar = false;
 		form.Show();
 		Application.DoEvents();
+		if (compact)
+			form.Size = form.MinimumSize;
+		if (scale != 1) {
+			// 合成布局检查：放大尺寸和每个控件字体，不改 Windows 显示设置。
+			var fonts = Descendants(form).Prepend(form).Select(control => (Control: control, Font: control.Font)).ToArray();
+			form.AutoScaleMode = AutoScaleMode.None;
+			form.Scale(new SizeF(scale, scale));
+			foreach (var item in fonts)
+				item.Control.Font = new Font(item.Font.FontFamily, item.Font.Size * scale, item.Font.Style);
+		}
 		form.PerformLayout();
+		Application.DoEvents();
 		using var bitmap = new Bitmap(form.Width, form.Height);
 		form.DrawToBitmap(bitmap, new Rectangle(Point.Empty, bitmap.Size));
 		bitmap.Save(path, ImageFormat.Png);
+		foreach (Button button in Descendants(form).OfType<Button>()) {
+			Size measured = TextRenderer.MeasureText(button.Text, button.Font, Size.Empty, TextFormatFlags.SingleLine);
+			if (button.ClientSize.Width < measured.Width + button.Padding.Horizontal
+				|| button.ClientSize.Height < measured.Height + button.Padding.Vertical)
+				throw new InvalidOperationException($"{Path.GetFileName(path)} 按钮文字空间不足：{button.Text}，按钮 {button.Size}，文字 {measured}");
+			if (button.Parent is Control parent && (button.Left < 0 || button.Right > parent.ClientSize.Width + 1 || button.Bottom > parent.ClientSize.Height + 1))
+				throw new InvalidOperationException($"{Path.GetFileName(path)} 按钮超出父容器：{button.Text}");
+		}
+		report.Add($"PASS {Path.GetFileName(path)}：按钮文字与容器边界");
 		form.Hide();
+	}
+
+	private static IEnumerable<Control> Descendants(Control parent) {
+		foreach (Control child in parent.Controls) {
+			yield return child;
+			foreach (Control descendant in Descendants(child))
+				yield return descendant;
+		}
 	}
 }
