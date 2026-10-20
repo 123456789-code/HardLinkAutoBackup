@@ -1,6 +1,6 @@
 ﻿# 技术设计
 
-状态：1.0.1 交付实现（2026-10-19）。运行说明见 user-guide.md，验证记录见 release-validation.md。
+状态：1.1.0 交付实现（2026-10-20）。运行说明见 user-guide.md，验证记录见 release-validation.md。
 
 ## 1. 已确认技术栈
 
@@ -33,9 +33,11 @@ Windows 文件系统适配层：NTFS/卷校验、文件 ID、CreateHardLinkW
 
 UI 不直接执行硬链接操作；扫描器也不直接操作窗体控件。这可保证隐藏界面后继续运行，并让文件系统规则可独立测试。第一版可以在同一 WinForms 项目中按目录分层，暂不需要增加多个项目或第三方依赖。
 
+界面由 `MainForm`、`TaskEditor`、`SettingsDialog` 直接构建，不保留空白 Designer 模板。`UiTheme` 统一按钮和颜色，`ToggleSwitch` 保留键盘及无障碍语义并绘制滑块。诊断入口仅在 `EnableDiagnostics=true` 时包含 `Diagnostics.cs`。
+
 ## 3. 数据模型
 
-`AppSettings`：开机自启、管理员权限启动、周期备份总开关、关闭界面后台驻留、配置版本。
+`AppSettings`：开机自启、管理员权限启动、周期备份总开关、关闭界面后台驻留、隐藏底部提醒、配置版本。
 
 `BackupTask`：稳定的任务 ID、显示名称、源目录、备份目录、周期、任务自动开关、排除规则、首次确认的卷 GUID。
 

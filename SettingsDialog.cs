@@ -3,8 +3,9 @@
 internal sealed class SettingsDialog : Form {
 	public CheckBox AutoStart { get; } = new() { Text = "登录 Windows 后自动启动", AutoSize = true };
 	public CheckBox Elevated { get; } = new() { Text = "以管理员权限启动", AutoSize = true };
-	public CheckBox Automatic { get; } = new() { Text = "启用自动备份", AutoSize = true };
+	public ToggleSwitch Automatic { get; } = new() { Text = "启用自动备份", AutoSize = true };
 	public CheckBox Tray { get; } = new() { Text = "关闭窗口后继续运行", AutoSize = true };
+	public CheckBox Reminder { get; } = new() { Text = "显示底部使用提醒", AutoSize = true };
 	public CheckBox RepairStartup { get; } = new() { Text = "保存时同步 / 修复自启任务", AutoSize = true };
 
 	public SettingsDialog(AppSettings settings, string data_directory) {
@@ -34,10 +35,12 @@ internal sealed class SettingsDialog : Form {
 		Elevated.Checked = settings.RunAsAdministrator;
 		Automatic.Checked = settings.AutomaticEnabled;
 		Tray.Checked = settings.StayInTray;
+		Reminder.Checked = !settings.HideUsageReminder;
 		AddSetting(content, AutoStart, "登录后开始保护；保存前会确认 Windows 计划任务的变更。");
 		AddSetting(content, Elevated, "下次启动生效。普通可写目录通常无需管理员权限。");
 		AddSetting(content, Automatic, "监控文件变化并按周期完整扫描；关闭后仍可手动扫描。");
 		AddSetting(content, Tray, "隐藏到右下角通知区域；需要停止时从托盘菜单退出。");
+		AddSetting(content, Reminder, "恢复主界面底部的硬链接使用提醒。");
 		var maintenance = new TableLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, ColumnCount = 1, Padding = new Padding(16), BackColor = Color.White, Margin = new Padding(0, 12, 0, 12) };
 		maintenance.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
 		maintenance.Controls.Add(RepairStartup);

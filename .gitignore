@@ -2,6 +2,8 @@
 bin/
 obj/
 .local/
+.checks/
 .demo-checks/
 *.csproj.user
 artifacts/
+data/

@@ -3,14 +3,15 @@ using Microsoft.Win32;
 
 namespace HardLinkAutoBackup;
 
-public partial class Form1 : Form {
+internal sealed class MainForm : Form {
 	private readonly AppSettings Settings;
 	private readonly AppStore Store;
 	private readonly BackupCoordinator Coordinator;
 	private readonly DataGridView Grid = new TaskGrid();
 	private readonly Label Summary = new();
 	private readonly Label Details = new();
-	private readonly CheckBox AutomaticSwitch = new();
+	private readonly ToggleSwitch AutomaticSwitch = new();
+	private readonly TableLayoutPanel ReminderPanel = new();
 	private readonly System.Windows.Forms.Timer Pulse = new() { Interval = 1000 };
 	private readonly NotifyIcon TrayIcon = new();
 	private readonly bool StartHidden;
@@ -20,15 +21,12 @@ public partial class Form1 : Form {
 	private bool ClosingDown;
 	private DateTimeOffset LastNotification = DateTimeOffset.MinValue;
 
-	public Form1() : this(new AppSettings(), new AppStore(), false, true) { }
-
-	internal Form1(AppSettings settings, AppStore store, bool start_hidden, bool preview = false) {
+	internal MainForm(AppSettings settings, AppStore store, bool start_hidden, bool preview = false) {
 		Settings = settings;
 		Store = store;
 		StartHidden = start_hidden;
 		Preview = preview;
 		Coordinator = new BackupCoordinator(settings, store);
-		InitializeComponent();
 		BuildInterface();
 		Coordinator.Changed += RefreshTasks;
 		Coordinator.Attention += Notify;
@@ -45,8 +43,17 @@ public partial class Form1 : Form {
 				Hide();
 		};
 		FormClosing += HandleClosing;
-		FormClosed += (_, _) => { SystemEvents.PowerModeChanged -= HandlePowerMode; Pulse.Dispose(); TrayIcon.Dispose(); };
 		RefreshTasks();
+	}
+
+	protected override void Dispose(bool disposing) {
+		if (disposing) {
+			SystemEvents.PowerModeChanged -= HandlePowerMode;
+			Pulse.Dispose();
+			TrayIcon.ContextMenuStrip?.Dispose();
+			TrayIcon.Dispose();
+		}
+		base.Dispose(disposing);
 	}
 
 	private void HandlePowerMode(object sender, PowerModeChangedEventArgs args) {
@@ -55,7 +62,7 @@ public partial class Form1 : Form {
 	}
 
 	private void BuildInterface() {
-		Text = $"HardLinkAutoBackup {typeof(Form1).Assembly.GetName().Version?.ToString(3)}";
+		Text = $"HardLinkAutoBackup {typeof(MainForm).Assembly.GetName().Version?.ToString(3)}";
 		UiTheme.Apply(this);
 		ClientSize = new Size(1200, 780);
 		MinimumSize = new Size(960, 620);
@@ -193,15 +200,33 @@ public partial class Form1 : Form {
 		detail_panel.Controls.Add(Details, 0, 0);
 		detail_panel.Controls.Add(detail_buttons, 1, 0);
 		root.Controls.Add(detail_panel, 0, 4);
-		root.Controls.Add(new Label {
+		ReminderPanel.Dock = DockStyle.Fill;
+		ReminderPanel.AutoSize = true;
+		ReminderPanel.ColumnCount = 2;
+		ReminderPanel.BackColor = Color.FromArgb(255, 248, 231);
+		ReminderPanel.Padding = new Padding(24, 8, 24, 8);
+		ReminderPanel.Margin = Padding.Empty;
+		ReminderPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+		ReminderPanel.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+		ReminderPanel.Controls.Add(new Label {
 			Text = "使用提醒   硬链接共享内容：删除源路径后备份仍在；原地修改或加密会同时影响备份。",
 			AutoSize = true,
 			Dock = DockStyle.Fill,
-			BackColor = Color.FromArgb(255, 248, 231),
+			TextAlign = ContentAlignment.MiddleLeft,
 			ForeColor = Color.FromArgb(119, 85, 32),
-			Padding = new Padding(24, 12, 24, 12),
-			Margin = Padding.Empty
-		}, 0, 5);
+			Margin = new Padding(0, 0, 16, 0)
+		}, 0, 0);
+		Button dismiss = UiTheme.Button("不再提示", (_, _) => {
+			Settings.HideUsageReminder = true;
+			if (!SaveSettings())
+				Settings.HideUsageReminder = false;
+			ReminderPanel.Visible = !Settings.HideUsageReminder;
+		});
+		dismiss.Margin = Padding.Empty;
+		dismiss.Anchor = AnchorStyles.Right;
+		ReminderPanel.Controls.Add(dismiss, 1, 0);
+		ReminderPanel.Visible = !Settings.HideUsageReminder;
+		root.Controls.Add(ReminderPanel, 0, 5);
 		Controls.Add(root);
 		var menu = new ContextMenuStrip();
 		menu.Items.Add("打开界面", null, (_, _) => ShowWindow());
@@ -229,6 +254,7 @@ public partial class Form1 : Form {
 			return;
 		Refreshing = true;
 		AutomaticSwitch.Checked = Settings.AutomaticEnabled;
+		ReminderPanel.Visible = !Settings.HideUsageReminder;
 		if (Grid.Rows.Count != Settings.Tasks.Count || Grid.Rows.Cast<DataGridViewRow>().Where((row, index) => !ReferenceEquals(row.Tag, Settings.Tasks[index])).Any()) {
 			Guid? selected = SelectedTask()?.Id;
 			Grid.Rows.Clear();
@@ -324,6 +350,7 @@ public partial class Form1 : Form {
 		bool old_admin = Settings.RunAsAdministrator;
 		bool old_auto = Settings.AutomaticEnabled;
 		bool old_tray = Settings.StayInTray;
+		bool old_reminder = Settings.HideUsageReminder;
 		bool update_startup = dialog.RepairStartup.Checked || old_start != dialog.AutoStart.Checked || ((old_start || dialog.AutoStart.Checked) && old_admin != dialog.Elevated.Checked);
 		try {
 			if (update_startup) {
@@ -338,12 +365,14 @@ public partial class Form1 : Form {
 			Settings.RunAsAdministrator = dialog.Elevated.Checked;
 			Settings.AutomaticEnabled = dialog.Automatic.Checked;
 			Settings.StayInTray = dialog.Tray.Checked;
+			Settings.HideUsageReminder = !dialog.Reminder.Checked;
 			try { Store.Save(Settings); }
 			catch {
 				Settings.StartAtLogon = old_start;
 				Settings.RunAsAdministrator = old_admin;
 				Settings.AutomaticEnabled = old_auto;
 				Settings.StayInTray = old_tray;
+				Settings.HideUsageReminder = old_reminder;
 				// 系统变更可能已经完成；不按旧配置猜测并覆盖原先的系统状态。
 				if (update_startup)
 					Store.Log("自启系统设置已更新，但配置保存失败。请核对自启状态并使用同步/修复。");

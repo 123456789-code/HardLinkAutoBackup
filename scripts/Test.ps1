@@ -3,8 +3,8 @@
 $ErrorActionPreference = 'Stop'
 $project_root = Split-Path -Parent $PSScriptRoot
 $program = Join-Path $project_root "bin\$Configuration\net10.0-windows\HardLinkAutoBackup.exe"
-if (!(Test-Path -LiteralPath $program)) { throw '请先执行 Build-Demo.ps1。' }
-$output = Join-Path $project_root '.demo-checks'
+if (!(Test-Path -LiteralPath $program)) { throw '请先执行 Build.ps1。' }
+$output = Join-Path $project_root '.checks'
 $env:TEMP = Join-Path $project_root '.local\temp'
 $env:TMP = $env:TEMP
 New-Item -ItemType Directory -Force -Path $env:TEMP, $output | Out-Null

@@ -6,6 +6,7 @@ public sealed class AppSettings {
 	public bool RunAsAdministrator { get; set; }
 	public bool AutomaticEnabled { get; set; } = true;
 	public bool StayInTray { get; set; } = true;
+	public bool HideUsageReminder { get; set; }
 	public List<BackupTask> Tasks { get; set; } = [];
 }
 

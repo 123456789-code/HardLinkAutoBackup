@@ -144,12 +144,11 @@ internal sealed class BackupCoordinator {
 		}
 	}
 
-	public void Request(BackupTask task, bool manual = true) {
+	public void Request(BackupTask task) {
 		if (Stopping)
 			return;
 		if (State(task).Running) {
-			if (manual)
-				State(task).PendingManual = true;
+			State(task).PendingManual = true;
 			return;
 		}
 		Start(task, null);

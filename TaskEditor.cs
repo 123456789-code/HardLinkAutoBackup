@@ -4,7 +4,7 @@ internal sealed class TaskEditor : Form {
 	private readonly TextBox NameBox = new() { Dock = DockStyle.Fill };
 	private readonly TextBox SourceBox = new() { Dock = DockStyle.Fill };
 	private readonly TextBox DestinationBox = new() { Dock = DockStyle.Fill };
-	private readonly CheckBox AutomaticBox = new() { Text = "自动监控文件变化，并按周期完整扫描", AutoSize = true, Checked = true };
+	private readonly ToggleSwitch AutomaticBox = new() { Text = "自动备份", AutoSize = true, Checked = true };
 	private readonly NumericUpDown IntervalBox = new() { Minimum = 1, Maximum = 31536000, Value = 1, Width = 110 };
 	private readonly ComboBox UnitBox = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 90 };
 	private readonly TextBox ExclusionBox = new() { Multiline = true, Dock = DockStyle.Fill, ScrollBars = ScrollBars.Vertical };
@@ -92,7 +92,7 @@ internal sealed class TaskEditor : Form {
 			while (unit > 0 && original.IntervalSeconds % factors[unit] != 0)
 				unit--;
 			UnitBox.SelectedIndex = unit;
-			IntervalBox.Value = Math.Clamp(original.IntervalSeconds / factors[unit], 1, 31536000);
+			IntervalBox.Value = original.IntervalSeconds / factors[unit];
 			ExclusionBox.Lines = original.Exclusions.ToArray();
 		}
 	}

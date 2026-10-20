@@ -3,7 +3,7 @@ using System.Text;
 
 namespace HardLinkAutoBackup;
 
-internal static class DemoChecks {
+internal static class Diagnostics {
 	public static int Run(string output_directory) {
 		string root = Path.GetFullPath(output_directory);
 		Directory.CreateDirectory(root);
@@ -46,8 +46,15 @@ internal static class DemoChecks {
 			Check(engine.Scan(task, [task], cancelled.Token).Cancelled, "取消扫描", results);
 			var store = new AppStore(Path.Combine(run_root, "data"));
 			store.Save(new AppSettings { Tasks = [task], AutomaticEnabled = false });
+			var legacy = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(store.ConfigurationPath))!.AsObject();
+			legacy.Remove(nameof(AppSettings.HideUsageReminder));
+			File.WriteAllText(store.ConfigurationPath, legacy.ToJsonString());
 			AppSettings loaded = store.Load();
 			Check(loaded.Tasks.Single().Id == task.Id && !loaded.AutomaticEnabled, "配置保存与加载", results);
+			Check(!loaded.HideUsageReminder, "既有配置默认显示使用提醒", results);
+			loaded.HideUsageReminder = true;
+			store.Save(loaded);
+			Check(store.Load().HideUsageReminder, "不再提示偏好持久保存", results);
 			string shape = Path.Combine(source, "shape");
 			File.WriteAllText(shape, "old file");
 			engine.Scan(task, [task], CancellationToken.None);
@@ -292,13 +299,38 @@ internal static class DemoChecks {
 				foreach (bool compact in new[] { false, true }) {
 					var settings = new AppSettings { Tasks = [new BackupTask { Name = "工作文档", Source = @"E:\Documents", Destination = @"E:\Backups\Documents" }, new BackupTask { Name = "照片资料", Source = @"E:\Photos", Destination = @"E:\Backups\Photos", Enabled = false }] };
 					string suffix = scale == 1 && !compact ? "" : $"-{scale * 100:0}{(compact ? "-compact" : "")}";
-					using var main = new Form1(settings, new AppStore(Path.Combine(output_directory, "preview-data")), false, true);
+					using var main = new MainForm(settings, new AppStore(Path.Combine(output_directory, "preview-data")), false, true);
 					RenderForm(main, Path.Combine(output_directory, $"main{suffix}.png"), scale, compact, report);
 					using var editor = new TaskEditor(settings.Tasks, settings.Tasks[0]);
 					RenderForm(editor, Path.Combine(output_directory, $"task-editor{suffix}.png"), scale, compact, report);
 					using var preferences = new SettingsDialog(settings, Path.Combine(AppContext.BaseDirectory, "data"));
 					RenderForm(preferences, Path.Combine(output_directory, $"settings{suffix}.png"), scale, compact, report);
 				}
+			}
+			var interaction_store = new AppStore(Path.Combine(output_directory, $"interaction-{Guid.NewGuid():N}"));
+			var interaction_settings = new AppSettings();
+			using (var main = new MainForm(interaction_settings, interaction_store, false, true)) {
+				RenderForm(main, Path.Combine(output_directory, "main-before-dismiss.png"), 1, false, report);
+				main.Show();
+				Button dismiss = Descendants(main).OfType<Button>().Single(button => button.Text == "不再提示");
+				int previous_height = dismiss.Parent!.Height;
+				dismiss.PerformClick();
+				Application.DoEvents();
+				Check(interaction_store.Load().HideUsageReminder && !dismiss.Parent.Visible, "点击不再提示后隐藏并保存", report);
+				var layout = (TableLayoutPanel)dismiss.Parent.Parent!;
+				Check(previous_height > 0 && layout.GetRowHeights().Last() == 0, "隐藏提醒后不保留底部空白", report);
+				ToggleSwitch automatic = Descendants(main).OfType<ToggleSwitch>().Single();
+				automatic.Checked = false;
+				Check(!interaction_store.Load().AutomaticEnabled && (automatic.AccessibilityObject.State & AccessibleStates.Checked) == 0, "滑块关闭保存且无障碍状态同步", report);
+				RenderForm(main, Path.Combine(output_directory, "main-dismissed-paused.png"), 1, false, report);
+			}
+			using (var reopened = new MainForm(interaction_store.Load(), interaction_store, false, true)) {
+				RenderForm(reopened, Path.Combine(output_directory, "main-reopened.png"), 1, false, report);
+				reopened.Show();
+				Check(!Descendants(reopened).OfType<Button>().Single(button => button.Text == "不再提示").Visible, "重新打开窗口仍隐藏提醒", report);
+				ToggleSwitch automatic = Descendants(reopened).OfType<ToggleSwitch>().Single();
+				automatic.Checked = true;
+				Check(interaction_store.Load().AutomaticEnabled && (automatic.AccessibilityObject.State & AccessibleStates.Checked) != 0, "滑块恢复保存且无障碍状态同步", report);
 			}
 			File.WriteAllLines(Path.Combine(output_directory, "layout-results.txt"), report, new UTF8Encoding(true));
 			return 0;
@@ -331,7 +363,7 @@ internal static class DemoChecks {
 		using var bitmap = new Bitmap(form.Width, form.Height);
 		form.DrawToBitmap(bitmap, new Rectangle(Point.Empty, bitmap.Size));
 		bitmap.Save(path, ImageFormat.Png);
-		foreach (Button button in Descendants(form).OfType<Button>()) {
+		foreach (Button button in Descendants(form).OfType<Button>().Where(button => button.Visible)) {
 			Size measured = TextRenderer.MeasureText(button.Text, button.Font, Size.Empty, TextFormatFlags.SingleLine);
 			if (button.ClientSize.Width < measured.Width + button.Padding.Horizontal
 				|| button.ClientSize.Height < measured.Height + button.Padding.Vertical)
