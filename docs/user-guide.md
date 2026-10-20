@@ -1,4 +1,4 @@
-﻿# HardLinkAutoBackup 1.1.1 使用说明
+﻿# HardLinkAutoBackup 1.1.2 使用说明
 
 ## 1. 安装或解压运行
 

@@ -1,6 +1,16 @@
-﻿# 1.1.1 交付验证
+﻿# 1.1.2 交付验证
 
 日期：2026-10-20。已验收 demo 基线：Git 提交 `769dc9b`，标签 `demo-accepted`。
+
+## 1.1.2 滑块残影修复验证
+
+- 根因：ToggleSwitch 继承 ButtonBase 的 Opaque 样式，背景绘制被跳过，自定义前景绘制后留下复用缓冲区中的旧内容。将此样式关闭，恢复透明控件的父容器背景绘制。
+- 新回归先向共享绘制缓冲区填入明显的旧颜色，再向滑块自身的窗口发送 WM_PAINT，将实际重绘结果保存并检查边沿像素；不使用屏幕截图，不读取其他应用画面。
+- 修复前测试稳定失败；修复后通过 6 组背景回归（灰色/白色 × 100%/150%/200% 合成字体尺寸），每组覆盖开启→关闭→开启、启用/禁用和尺寸变化。
+- 原有 26 项界面布局与交互检查、60 项核心检查均通过。新增回归补足 DrawToBitmap 预览未覆盖的重绘路径；合成字体尺寸不等同于真实显示器 DPI 切换。
+- 安装包与绿色版仍通过 GitHub 工作流生成；安装、覆盖升级和卸载验证成功后才公开发布。本机没有执行安装程序或改动系统自启设置。
+
+实现依据：[WinForms ButtonBase 源码](https://github.com/dotnet/winforms/blob/v10.0.0/src/System.Windows.Forms/System/Windows/Forms/Controls/Buttons/ButtonBase.cs)及 [Control 绘制路径](https://github.com/dotnet/winforms/blob/v10.0.0/src/System.Windows.Forms/System/Windows/Forms/Control.cs)。
 
 ## 本次界面与清理验证
 

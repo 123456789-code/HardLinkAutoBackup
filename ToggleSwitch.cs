@@ -6,6 +6,8 @@ namespace HardLinkAutoBackup;
 internal sealed class ToggleSwitch : CheckBox {
 	public ToggleSwitch() {
 		SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw | ControlStyles.SupportsTransparentBackColor, true);
+		// ButtonBase 默认跳过背景；透明滑块必须先重绘父容器背景，避免复用缓冲区残影。
+		SetStyle(ControlStyles.Opaque, false);
 		AutoSize = true;
 		Cursor = Cursors.Hand;
 		BackColor = Color.Transparent;

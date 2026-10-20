@@ -1,9 +1,13 @@
 ﻿using System.Drawing.Imaging;
+using System.Runtime.InteropServices;
 using System.Text;
 
 namespace HardLinkAutoBackup;
 
 internal static class Diagnostics {
+	[DllImport("user32.dll", ExactSpelling = true)]
+	private static extern IntPtr SendMessageW(IntPtr window, uint message, IntPtr parameter, IntPtr data);
+
 	public static int Run(string output_directory) {
 		string root = Path.GetFullPath(output_directory);
 		Directory.CreateDirectory(root);
@@ -298,6 +302,7 @@ internal static class Diagnostics {
 		Directory.CreateDirectory(output_directory);
 		var report = new List<string>();
 		try {
+			CheckTogglePainting(output_directory, report);
 			foreach (float scale in new[] { 1f, 1.5f, 2f }) {
 				foreach (bool compact in new[] { false, true }) {
 					var settings = new AppSettings { Tasks = [new BackupTask { Name = "工作文档", Source = @"E:\Documents", Destination = @"E:\Backups\Documents" }, new BackupTask { Name = "照片资料", Source = @"E:\Photos", Destination = @"E:\Backups\Photos", Enabled = false }] };
@@ -342,6 +347,42 @@ internal static class Diagnostics {
 			File.WriteAllText(Path.Combine(output_directory, "render-error.txt"), exception.ToString());
 			File.WriteAllLines(Path.Combine(output_directory, "layout-results.txt"), report, new UTF8Encoding(true));
 			return 1;
+		}
+	}
+
+	private static void CheckTogglePainting(string output_directory, List<string> report) {
+		foreach (float scale in new[] { 1f, 1.5f, 2f }) {
+			foreach (Color background in new[] { UiTheme.Canvas, Color.White }) {
+				using var form = new Form { ClientSize = new Size(800, 200), BackColor = background, ShowInTaskbar = false, StartPosition = FormStartPosition.Manual, Location = new Point(-32000, -32000) };
+				using var font = new Font("Microsoft YaHei UI", 10 * scale);
+				var toggle = new ToggleSwitch { Text = "自动备份", Font = font, Location = new Point(24, 24), AutoSize = false };
+				form.Controls.Add(toggle);
+				form.Show();
+				foreach (bool enabled in new[] { true, false }) {
+					foreach (bool active in new[] { true, false, true }) {
+						toggle.Enabled = enabled;
+						toggle.Checked = active;
+						toggle.Size = toggle.GetPreferredSize(Size.Empty) + new Size(active ? 20 : 0, 0);
+						using var bitmap = new Bitmap(toggle.Width, toggle.Height);
+						using (Graphics graphics = Graphics.FromImage(bitmap)) {
+							// 污染复用缓冲区，再走实际 WM_PAINT 路径；DrawToBitmap 不覆盖此故障。
+							using (BufferedGraphics buffer = BufferedGraphicsManager.Current.Allocate(graphics, toggle.ClientRectangle))
+								buffer.Graphics.Clear(Color.Magenta);
+							IntPtr device = graphics.GetHdc();
+							try { SendMessageW(toggle.Handle, 0x000f, device, IntPtr.Zero); }
+							finally { graphics.ReleaseHdc(device); }
+						}
+						string name = $"toggle-paint-{scale * 100:0}-{background.ToArgb():X8}-{enabled}-{active}.png";
+						bitmap.Save(Path.Combine(output_directory, name), ImageFormat.Png);
+						// 外沿不包含滑块、文字或焦点框，重绘后必须恢复父容器背景。
+						for (int x = 0; x < bitmap.Width; x++) {
+							if (bitmap.GetPixel(x, 0).ToArgb() != background.ToArgb() || bitmap.GetPixel(x, bitmap.Height - 1).ToArgb() != background.ToArgb())
+								throw new InvalidOperationException($"{name} 滑块重绘留下旧像素：x={x}");
+						}
+					}
+				}
+				Check(true, $"滑块 WM_PAINT 背景恢复：{scale * 100:0}% / {background.Name}，切换、禁用及尺寸变化", report);
+			}
 		}
 	}
 

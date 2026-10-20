@@ -25,7 +25,7 @@ GitHub 自动生成的 Source code 附件是源码，不是绿色版。Release �
 
 `scripts/Publish-Release.ps1` 默认只构建绿色版。如已自行安装 Inno Setup 6.7 或更高版本，可显式传入编译器：
 ```powershell
-.\scripts\Publish-Release.ps1 -Version 1.1.1 -InstallerCompiler '你自己的安装目录\ISCC.exe'
+.\scripts\Publish-Release.ps1 -Version 1.1.2 -InstallerCompiler '你自己的安装目录\ISCC.exe'
 ```
 脚本不自动查找、下载或安装 Inno Setup。禁止在本机运行安装测试脚本；它仅允许在 GitHub 托管临时环境执行，避免改动维护者的快捷方式或卸载注册信息。
 
