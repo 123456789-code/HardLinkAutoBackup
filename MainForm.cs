@@ -135,7 +135,6 @@ internal sealed class MainForm : Form {
 			if (!SaveSettings())
 				Settings.AutomaticEnabled = old;
 			Coordinator.Reconfigure();
-			RefreshTasks();
 		};
 
 		status.Controls.Add(Summary, 0, 0);
@@ -280,7 +279,7 @@ internal sealed class MainForm : Form {
 			row.Cells[3].ToolTipText = state.WatcherWarning;
 			row.Cells[3].Style.ForeColor = state.Result?.Failed > 0 ? Color.Firebrick : enabled ? UiTheme.Blue : UiTheme.Muted;
 		}
-		Summary.Text = $"{Settings.Tasks.Count} 个任务    ·    {Settings.Tasks.Count(task => Coordinator.State(task).Running)} 个运行中    ·    {(Settings.AutomaticEnabled ? "自动备份开启" : "自动备份暂停，仍可手动扫描")}";
+		Summary.Text = $"{Settings.Tasks.Count} 个任务    ·    {Settings.Tasks.Count(task => Coordinator.State(task).Running)} 个运行中   {(Settings.AutomaticEnabled ? "" : "·    仍可手动扫描")}";
 		Refreshing = false;
 		RefreshDetails();
 	}
@@ -310,7 +309,6 @@ internal sealed class MainForm : Form {
 				Settings.Tasks[index] = original;
 		}
 		Coordinator.Reconfigure();
-		RefreshTasks();
 	}
 
 	private void ToggleSelected() {
@@ -320,7 +318,6 @@ internal sealed class MainForm : Form {
 		if (!SaveSettings())
 			task.Enabled = !task.Enabled;
 		Coordinator.Reconfigure();
-		RefreshTasks();
 	}
 
 	private void RemoveSelected() {
@@ -334,7 +331,6 @@ internal sealed class MainForm : Form {
 		if (!SaveSettings())
 			Settings.Tasks.Insert(index, task);
 		Coordinator.Reconfigure();
-		RefreshTasks();
 	}
 
 	private bool SaveSettings() {
@@ -348,10 +344,9 @@ internal sealed class MainForm : Form {
 			return;
 		bool old_start = Settings.StartAtLogon;
 		bool old_admin = Settings.RunAsAdministrator;
-		bool old_auto = Settings.AutomaticEnabled;
 		bool old_tray = Settings.StayInTray;
 		bool old_reminder = Settings.HideUsageReminder;
-		bool update_startup = dialog.RepairStartup.Checked || old_start != dialog.AutoStart.Checked || ((old_start || dialog.AutoStart.Checked) && old_admin != dialog.Elevated.Checked);
+		bool update_startup = dialog.RepairStartupRequested || old_start != dialog.AutoStart.Checked || ((old_start || dialog.AutoStart.Checked) && old_admin != dialog.Elevated.Checked);
 		try {
 			if (update_startup) {
 				string action = dialog.AutoStart.Checked ? "创建或更新" : "移除";
@@ -363,14 +358,12 @@ internal sealed class MainForm : Form {
 			}
 			Settings.StartAtLogon = dialog.AutoStart.Checked;
 			Settings.RunAsAdministrator = dialog.Elevated.Checked;
-			Settings.AutomaticEnabled = dialog.Automatic.Checked;
 			Settings.StayInTray = dialog.Tray.Checked;
 			Settings.HideUsageReminder = !dialog.Reminder.Checked;
 			try { Store.Save(Settings); }
 			catch {
 				Settings.StartAtLogon = old_start;
 				Settings.RunAsAdministrator = old_admin;
-				Settings.AutomaticEnabled = old_auto;
 				Settings.StayInTray = old_tray;
 				Settings.HideUsageReminder = old_reminder;
 				// 系统变更可能已经完成；不按旧配置猜测并覆盖原先的系统状态。
@@ -378,7 +371,6 @@ internal sealed class MainForm : Form {
 					Store.Log("自启系统设置已更新，但配置保存失败。请核对自启状态并使用同步/修复。");
 				throw;
 			}
-			Coordinator.Reconfigure();
 			RefreshTasks();
 		}
 		catch (Exception exception) { MessageBox.Show(this, $"{exception.Message}\r\n若操作被中断，请在 Windows 任务计划程序核对 {StartupRegistration.TaskName}。", "设置未完成", MessageBoxButtons.OK, MessageBoxIcon.Warning); }

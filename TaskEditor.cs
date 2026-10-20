@@ -4,9 +4,9 @@ internal sealed class TaskEditor : Form {
 	private readonly TextBox NameBox = new() { Dock = DockStyle.Fill };
 	private readonly TextBox SourceBox = new() { Dock = DockStyle.Fill };
 	private readonly TextBox DestinationBox = new() { Dock = DockStyle.Fill };
-	private readonly ToggleSwitch AutomaticBox = new() { Text = "自动备份", AutoSize = true, Checked = true };
-	private readonly NumericUpDown IntervalBox = new() { Minimum = 1, Maximum = 31536000, Value = 1, Width = 110 };
-	private readonly ComboBox UnitBox = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 90 };
+	private readonly ToggleSwitch AutomaticBox = new() { Text = "自动备份", Checked = true };
+	private readonly NumericUpDown IntervalBox = new() { Minimum = 1, Maximum = 31536000, Value = 1, Width = 128 };
+	private readonly ComboBox UnitBox = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 104 };
 	private readonly TextBox ExclusionBox = new() { Multiline = true, Dock = DockStyle.Fill, ScrollBars = ScrollBars.Vertical };
 	private readonly IReadOnlyList<BackupTask> Tasks;
 	private readonly Guid TaskId;
@@ -54,8 +54,6 @@ internal sealed class TaskEditor : Form {
 		var interval_panel = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, Margin = new Padding(0, 4, 0, 12) };
 		UnitBox.Items.AddRange(["秒", "分钟", "小时", "天"]);
 		UnitBox.SelectedIndex = 2;
-		IntervalBox.Width = 128;
-		UnitBox.Width = 104;
 		interval_panel.Controls.AddRange([IntervalBox, UnitBox]);
 		layout.Controls.Add(interval_panel, 1, 6);
 		layout.SetColumnSpan(interval_panel, 2);

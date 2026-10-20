@@ -24,13 +24,10 @@ internal sealed class AppStore {
 	}
 
 	public AppSettings Load() {
-		Directory.CreateDirectory(DataDirectory);
 		return File.Exists(ConfigurationPath) ? ReadSettings(ConfigurationPath) : new AppSettings();
 	}
 
-	public AppSettings ReadSettings(string path) {
-		if (new FileInfo(path).Length > 4 * 1024 * 1024)
-			throw new InvalidDataException("配置文件超过 4 MB。");
+	private AppSettings ReadSettings(string path) {
 		AppSettings settings = JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(path))
 			?? throw new InvalidDataException("配置为空，原文件已保留。");
 		Validate(settings);
@@ -82,8 +79,6 @@ internal sealed class AppStore {
 			string path = Path.Combine(DataDirectory, "state.json");
 			if (!File.Exists(path))
 				return [];
-			if (new FileInfo(path).Length > 8 * 1024 * 1024)
-				throw new InvalidDataException("状态记录过大。");
 			return JsonSerializer.Deserialize<Dictionary<Guid, SavedTaskState>>(File.ReadAllText(path)) ?? [];
 		}
 		catch (Exception exception) {

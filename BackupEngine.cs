@@ -40,17 +40,10 @@ internal sealed class BackupEngine(string data_directory) {
 						// 枚举器逐项读取，避免单个大目录额外分配完整数组。
 						foreach (string child in Directory.EnumerateFileSystemEntries(entry)) {
 							cancellation.ThrowIfCancellationRequested();
-							try {
-								if ((File.GetAttributes(child) & FileAttributes.Directory) != 0)
-									pending.Push(child);
-								else
-									ProcessEntry(child);
-							}
-							catch (FileNotFoundException) { result.Skipped++; }
-							catch (DirectoryNotFoundException) { result.Skipped++; }
-							catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or Win32Exception) {
-								result.AddError($"{child}：{exception.Message}");
-							}
+							if (Directory.Exists(child))
+								pending.Push(child);
+							else
+								ProcessEntry(child);
 						}
 					}
 					else

@@ -33,8 +33,8 @@ public sealed class BackupTask {
 		};
 	}
 
-	public string DefinitionKey() {
-		return $"{Source}\n{Destination}\n{VolumeIdentity}\n{string.Join("\n", Exclusions)}";
+	public string DefinitionKey(bool automatic_enabled) {
+		return $"{Source}\n{Destination}\n{VolumeIdentity}\n{string.Join("\n", Exclusions)}\n{Enabled}\n{IntervalSeconds}\n{automatic_enabled}";
 	}
 }
 

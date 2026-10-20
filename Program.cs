@@ -99,7 +99,7 @@ internal static class Program {
 				settings.RunAsAdministrator = true;
 				store.Save(settings);
 				if (settings.StartAtLogon)
-					MessageBox.Show("管理员启动设置已开启。请在“程序设置”中勾选“同步 / 修复自启任务”并保存，以更新已有登录任务的运行权限。", "请同步已有自启任务");
+					MessageBox.Show("管理员启动设置已开启。请在“程序设置”中点击“同步自启任务”并保存，以更新已有登录任务的运行权限。", "请同步已有自启任务");
 			}
 			if (settings.RunAsAdministrator && !administrator) {
 				try { RestartElevated(args); return 0; }

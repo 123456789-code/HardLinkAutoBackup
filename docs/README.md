@@ -1,7 +1,7 @@
 ﻿# 文档索引
 
 - [使用说明](user-guide.md)：解压运行、任务配置、硬链接行为、自启、升级和卸载。
-- [交付验证](release-validation.md)：1.1.3 验证结果、发布步骤和未覆盖范围。
+- [交付验证](release-validation.md)：1.1.4 验证结果、发布步骤和未覆盖范围。
 - [需求说明](requirements.md)：产品目标、界面行为和备份规则。
 - [技术设计](technical-design.md)：代码结构、扫描、调度、配置、自启和发布实现。
 - [代码规范](代码规范.md)：用户约定；与根目录 .editorconfig 冲突时以后者为准。

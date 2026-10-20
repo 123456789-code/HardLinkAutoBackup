@@ -303,6 +303,7 @@ internal static class Diagnostics {
 		var report = new List<string>();
 		try {
 			CheckTogglePainting(output_directory, report);
+			CheckSettingsDesign(output_directory, report);
 			foreach (float scale in new[] { 1f, 1.5f, 2f }) {
 				foreach (bool compact in new[] { false, true }) {
 					var settings = new AppSettings { Tasks = [new BackupTask { Name = "工作文档", Source = @"E:\Documents", Destination = @"E:\Backups\Documents" }, new BackupTask { Name = "照片资料", Source = @"E:\Photos", Destination = @"E:\Backups\Photos", Enabled = false }] };
@@ -348,6 +349,44 @@ internal static class Diagnostics {
 			File.WriteAllLines(Path.Combine(output_directory, "layout-results.txt"), report, new UTF8Encoding(true));
 			return 1;
 		}
+	}
+
+	private static void CheckSettingsDesign(string output_directory, List<string> report) {
+		var settings = new AppSettings { AutomaticEnabled = false, StayInTray = true, HideUsageReminder = false };
+		using (var dialog = new SettingsDialog(settings, Path.Combine(output_directory, "settings-data"))) {
+			dialog.StartPosition = FormStartPosition.Manual;
+			dialog.Location = new Point(-32000, -32000);
+			dialog.Show();
+			ToggleSwitch[] toggles = Descendants(dialog).OfType<ToggleSwitch>().ToArray();
+			Check(toggles.Length == 4 && toggles.All(toggle => !toggle.Text.Contains("自动备份")), "设置页仅含四个程序选项，无重复备份总开关", report);
+			Check(!dialog.AutoStart.Checked && !dialog.Elevated.Checked && dialog.Tray.Checked && dialog.Reminder.Checked, "四个设置滑块正确加载已有配置", report);
+			dialog.AutoStart.Checked = true;
+			dialog.Tray.Checked = false;
+			Descendants(dialog).OfType<Button>().Single(button => button.Text == "同步自启任务").PerformClick();
+			Check(dialog.RepairStartupRequested && !settings.StartAtLogon && settings.StayInTray, "维护按钮只安排保存时同步，未立即更改配置或系统", report);
+			Descendants(dialog).OfType<Button>().Single(button => button.Text == "取消").PerformClick();
+			Check(dialog.DialogResult == DialogResult.Cancel && !settings.StartAtLogon && settings.StayInTray, "取消设置保留原配置", report);
+		}
+		var store = new AppStore(Path.Combine(output_directory, $"interaction-{Guid.NewGuid():N}"));
+		using var main = new MainForm(settings, store, false, true);
+		main.StartPosition = FormStartPosition.Manual;
+		main.Location = new Point(-32000, -32000);
+		main.ShowInTaskbar = false;
+		main.Show();
+		// 在真实设置对话框中保存普通选项，不触碰系统自启设置。
+		using var timer = new System.Windows.Forms.Timer { Interval = 50 };
+		timer.Tick += (_, _) => {
+			timer.Stop();
+			var dialog = Application.OpenForms.OfType<SettingsDialog>().Single();
+			dialog.Tray.Checked = false;
+			dialog.Reminder.Checked = false;
+			Descendants(dialog).OfType<Button>().Single(button => button.Text == "保存设置").PerformClick();
+		};
+		timer.Start();
+		Descendants(main).OfType<Button>().Single(button => button.Text == "程序设置").PerformClick();
+		AppSettings saved = store.Load();
+		Check(!saved.AutomaticEnabled && !saved.StayInTray && saved.HideUsageReminder, "保存程序选项不改变已暂停的备份总开关", report);
+		Check(!Descendants(main).OfType<Button>().Single(button => button.Text == "不再提示").Visible, "设置保存后主界面提醒即时更新", report);
 	}
 
 	private static void CheckTogglePainting(string output_directory, List<string> report) {
@@ -407,15 +446,17 @@ internal static class Diagnostics {
 		using var bitmap = new Bitmap(form.Width, form.Height);
 		form.DrawToBitmap(bitmap, new Rectangle(Point.Empty, bitmap.Size));
 		bitmap.Save(path, ImageFormat.Png);
-		foreach (Button button in Descendants(form).OfType<Button>().Where(button => button.Visible)) {
-			Size measured = TextRenderer.MeasureText(button.Text, button.Font, Size.Empty, TextFormatFlags.SingleLine);
+		foreach (ButtonBase button in Descendants(form).OfType<ButtonBase>().Where(button => button.Visible)) {
+			Size measured = button is ToggleSwitch toggle
+				? toggle.GetPreferredSize(Size.Empty) - new Size(button.Padding.Horizontal, button.Padding.Vertical)
+				: TextRenderer.MeasureText(button.Text, button.Font, Size.Empty, TextFormatFlags.SingleLine);
 			if (button.ClientSize.Width < measured.Width + button.Padding.Horizontal
 				|| button.ClientSize.Height < measured.Height + button.Padding.Vertical)
 				throw new InvalidOperationException($"{Path.GetFileName(path)} 按钮文字空间不足：{button.Text}，按钮 {button.Size}，文字 {measured}");
 			if (button.Parent is Control parent && (button.Left < 0 || button.Right > parent.ClientSize.Width + 1 || button.Bottom > parent.ClientSize.Height + 1))
 				throw new InvalidOperationException($"{Path.GetFileName(path)} 按钮超出父容器：{button.Text}");
 		}
-		report.Add($"PASS {Path.GetFileName(path)}：按钮文字与容器边界");
+		Check(Descendants(form).OfType<CheckBox>().All(control => control is ToggleSwitch), $"{Path.GetFileName(path)}：开关样式统一、按钮与滑块文字及容器边界", report);
 		form.Hide();
 	}
 

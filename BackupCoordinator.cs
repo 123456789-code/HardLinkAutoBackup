@@ -49,7 +49,7 @@ internal sealed class BackupCoordinator {
 			Buffers.Remove(id);
 		}
 		foreach (BackupTask task in Settings.Tasks) {
-			string key = $"{task.DefinitionKey()}\n{task.Enabled}\n{task.IntervalSeconds}\n{Settings.AutomaticEnabled}";
+			string key = task.DefinitionKey(Settings.AutomaticEnabled);
 			if (Definitions.TryGetValue(task.Id, out string? old) && old == key)
 				continue;
 			Definitions[task.Id] = key;
@@ -81,7 +81,7 @@ internal sealed class BackupCoordinator {
 			return;
 		foreach (Guid id in Runs.Where(pair => pair.Value.IsCompleted).Select(pair => pair.Key).ToArray())
 			Runs.Remove(id);
-		foreach (BackupTask task in Settings.Tasks.ToArray()) {
+		foreach (BackupTask task in Settings.Tasks) {
 			if (!IsEnabled(task))
 				continue;
 			TaskState state = State(task);
@@ -128,7 +128,7 @@ internal sealed class BackupCoordinator {
 					buffer.Add(args.FullPath);
 			}
 			watcher.Created += MarkDirty;
-			watcher.Renamed += (sender, args) => MarkDirty(sender, args);
+			watcher.Renamed += MarkDirty;
 			watcher.Changed += MarkDirty;
 			watcher.Error += (_, args) => BrokenWatchers[task.Id] = args.GetException().Message;
 			watcher.EnableRaisingEvents = true;
@@ -185,7 +185,7 @@ internal sealed class BackupCoordinator {
 			BackupTask? live = Settings.Tasks.FirstOrDefault(item => item.Id == task.Id);
 			if (live is not null && live.VolumeIdentity is null && result.VolumeIdentity is not null) {
 				live.VolumeIdentity = result.VolumeIdentity;
-				Definitions[live.Id] = $"{live.DefinitionKey()}\n{live.Enabled}\n{live.IntervalSeconds}\n{Settings.AutomaticEnabled}";
+				Definitions[live.Id] = live.DefinitionKey(Settings.AutomaticEnabled);
 				try { Store.Save(Settings); }
 				catch (Exception exception) {
 					live.VolumeIdentity = null;
@@ -275,7 +275,7 @@ internal sealed class BackupCoordinator {
 		Watchers.Clear();
 		foreach (TaskState state in States.Values)
 			state.Cancellation?.Cancel();
-		await Task.WhenAll(Runs.Values.ToArray());
+		await Task.WhenAll(Runs.Values);
 		Slots.Dispose();
 	}
 }

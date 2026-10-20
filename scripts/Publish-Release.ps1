@@ -1,4 +1,4 @@
-﻿param([string]$Version = '1.1.3', [string]$InstallerCompiler)
+﻿param([string]$Version = '1.1.4', [string]$InstallerCompiler)
 
 $ErrorActionPreference = 'Stop'
 if ($Version -notmatch '^\d+\.\d+\.\d+$') { throw '版本号格式应为 1.0.0。' }
